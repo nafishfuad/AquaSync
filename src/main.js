@@ -17,10 +17,10 @@ const AquaSync = {
         
         // 2. Security Check: Are there any devices?
         if (Object.keys(DeviceStore.devices).length === 0) {
-            // Hide the main dashboard and nav
+            // Hide the main dashboard, header wrapper, and nav wrapper
             document.querySelector("main").classList.add("hidden");
-            document.querySelector("nav").classList.add("hidden");
-            document.querySelector("header").classList.add("hidden");
+            document.querySelector("nav").parentElement.classList.add("hidden");
+            document.querySelector("header").parentElement.classList.add("hidden");
             
             // Show the pairing flow
             renderEmptyState();
