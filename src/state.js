@@ -20,10 +20,6 @@ export const DeviceStore = {
             }
             this.activeDeviceId = localStorage.getItem("aquasync_active_hwid");
 
-            // Failsafe Provisioning: If memory is empty, provision an initial AS-Standard footprint
-            if (Object.keys(this.devices).length === 0) {
-                this.addDevice("AQUA-9038", "AS-Standard", "Mid Tech");
-            }
         } catch (error) {
             console.error("[STATE] Flash memory hydration failed. Initializing empty registries.", error);
             this.devices = {};
