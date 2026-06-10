@@ -17,19 +17,24 @@ const AquaSync = {
         if (Object.keys(DeviceStore.devices).length === 0) {
             document.querySelector("main").classList.add("hidden");
             document.querySelector("nav").classList.add("hidden");
-            document.getElementById("slot-top-nav").classList.add("hidden"); // Hide nav slot
+            document.getElementById("slot-top-nav").classList.add("hidden");
             renderEmptyState();
             return; 
         }
 
-        // Initialize the new double navigation bar
         initTopNav();
-
         this.switchTab('page-control'); 
         this.renderActiveUI();
 
+        // 1. Fetch data once on load
         this.runSyncLoop();
-        this.pollingTimer = setInterval(() => this.runSyncLoop(), 5000);
+
+        // 2. THE FIX: Only fetch data again if the user switches tabs and comes back
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === 'visible') {
+                this.runSyncLoop();
+            }
+        });
     },
 
     switchTab(targetId) {
@@ -71,21 +76,23 @@ const AquaSync = {
         const device = DeviceStore.getActiveDevice();
         if (!device) return;
 
-        // Fetch from API
         const response = await API.syncDevice(device);
         
         if (response && response.data) {
             this.setConnectionStatus(response.source);
             
-            // If the device sent capabilities (Local /info route), save them
+            // THE IP FIX: If Firebase knows the new local IP, save it so we can talk locally!
+            if (response.data.localIP && response.data.localIP !== device.localIP) {
+                console.log("📡 Found new local IP from Cloud:", response.data.localIP);
+                DeviceStore.updateNetwork(device.hwid, response.data.localIP, true);
+            }
+
             if (response.data.capabilities) {
                 DeviceStore.updateDeviceState(device.hwid, response.data, response.data.capabilities);
             } else {
-                // Otherwise just update the metrics (Cloud state route)
                 DeviceStore.updateDeviceState(device.hwid, response.data);
             }
 
-            // Redraw the active UI with fresh data
             this.renderActiveUI();
         } else {
             this.setConnectionStatus("offline");
