@@ -37,30 +37,12 @@
 
   <body class="bg-[#121212] text-gray-200 font-sans pb-24 select-none">
     
-    <div class="fixed top-0 left-0 right-0 z-[200] w-full flex justify-center px-4 pt-4 pointer-events-none">
-      <header class="pointer-events-auto w-full max-w-[1200px] bg-cardbg/70 backdrop-blur-xl border border-gray-700/50 shadow-[0_10px_40px_rgba(0,0,0,0.5)] rounded-2xl px-4 py-3 flex justify-between items-center">
-        <div class="flex items-center space-x-3">
-          <div class="w-10 h-10 bg-gradient-to-br from-aqua to-blue-600 rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(0,242,254,0.4)]">
-            <span class="text-xl">🌊</span>
-          </div>
-          <div class="flex flex-col justify-center">
-            <h1 class="text-white font-black tracking-widest uppercase text-sm leading-tight">AquaSync</h1>
-            <span id="ui-active-model" class="text-[9px] text-aqua font-bold tracking-widest uppercase">AS-Standard</span>
-          </div>
-        </div>
-
-        <div class="flex items-center space-x-2">
-          <button id="ui-connection-status" class="w-10 h-10 bg-[#121212] border border-gray-700 rounded-full flex items-center justify-center text-gray-400 hover:text-white transition-all active:scale-95 group">
-            <span class="relative flex h-3 w-3">
-              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-gray-500 opacity-75"></span>
-              <span class="relative inline-flex rounded-full h-3 w-3 bg-gray-500"></span>
-            </span>
-          </button>
-        </div>
-      </header>
+    <div id="slot-top-nav" class="fixed top-0 left-0 right-0 z-[200] w-full flex flex-col items-center px-4 pt-4 pointer-events-none space-y-3 h-auto">
     </div>
-    <div id="slot-global-overlays" class="fixed inset-0 z-[300] hidden flex-col items-center justify-center bg-deepbg px-6"></div>
-    <main class="p-5 pt-24 max-w-[1200px] mx-auto">
+
+    <div id="slot-global-overlays" class="fixed inset-0 z-[300] hidden flex-col items-center justify-center bg-deepbg px-6 pointer-events-auto"></div>
+    
+    <main class="p-5 pt-40 max-w-[1200px] mx-auto w-full pointer-events-auto">
       
       <section id="page-insights" class="block space-y-6">
         <h1 class="text-2xl font-bold text-white tracking-wide">Tank Insights</h1>
@@ -115,17 +97,10 @@
           <h2 class="text-sm uppercase text-gray-400 font-semibold tracking-wide">Today's Overview</h2>
           <div class="h-2.5 w-2.5 rounded-full bg-aqua shadow-[0_0_8px_#00f2fe]"></div>
         </div>
-        <div class="grid grid-cols-2 gap-y-4 gap-x-4 pb-4 border-b border-gray-800/60 metrics-grid">
-          <div>
-            <p class="text-[10px] text-gray-500 uppercase tracking-wider">Light Status</p>
-            <p class="text-xl font-black text-green-400 tracking-wide tpl-light-status">--</p>
-          </div>
-          <div class="text-right">
-            <p class="text-[10px] text-gray-500 uppercase tracking-wider">CO2 Status</p>
-            <p class="text-xl font-black text-green-400 tracking-wide tpl-co2-status">--</p>
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-y-4 gap-x-4 pt-4 text-xs font-medium text-gray-300 schedule-meta-grid">
+        
+        <div class="grid gap-4 pb-4 border-b border-gray-800/60 tpl-status-grid"></div>
+        
+        <div class="grid grid-cols-2 gap-y-4 gap-x-4 pt-4 text-xs font-medium text-gray-300">
           <div>
             <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Sunrise Commenced</p>
             <span class="tpl-sunrise-val text-sm">--</span>
@@ -143,22 +118,18 @@
             <span class="text-sm font-bold text-red-400 tpl-recovery-val">--</span>
           </div>
         </div>
+
+        <div class="tpl-dynamic-rows space-y-3 mt-3"></div>
       </div>
     </template>
 
     <template id="tpl-analytics-chart-card">
       <div class="bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800">
         <h2 class="text-sm uppercase text-gray-400 font-semibold tracking-wide mb-4 tpl-chart-title">Activity Graph</h2>
-        <div class="grid grid-cols-2 gap-4 mb-4 pb-4 border-b border-gray-800/60 text-xs">
-          <div>
-            <p class="text-[10px] text-gray-500 uppercase tracking-wider">Total Active</p>
-            <p class="text-lg font-bold text-white tpl-active-time">--</p>
-          </div>
-          <div class="text-right">
-            <p class="text-[10px] text-gray-500 uppercase tracking-wider">Load Shedding</p>
-            <p class="text-lg font-bold text-red-500 tpl-shedding-time">--</p>
-          </div>
+        
+        <div class="grid gap-4 mb-4 pb-4 border-b border-gray-800/60 text-xs tpl-stats-grid">
         </div>
+        
         <div class="relative w-full h-40">
           <canvas class="tpl-chart-canvas"></canvas>
         </div>
@@ -214,6 +185,7 @@
         </div>
       </div>
     </template>
+
     <template id="tpl-empty-splash">
       <div class="flex flex-col items-center justify-center text-center w-full h-full bg-deepbg z-[300] absolute inset-0 px-6">
         <div class="w-24 h-24 bg-aqua/10 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(0,242,254,0.15)]">
@@ -233,7 +205,7 @@
           
           <div class="flex justify-between items-center mb-6">
             <h2 class="text-sm uppercase text-white font-bold tracking-wider">Wi-Fi Setup</h2>
-            <button id="btn-close-wizard" class="text-gray-500 hover:text-red-400 text-2xl leading-none transition-colors">&times;</button>
+            <button type="button" id="btn-close-wizard" class="text-gray-500 hover:text-red-400 text-3xl p-2 -mr-2 leading-none transition-colors cursor-pointer z-50">&times;</button>
           </div>
 
           <div id="view-listen" class="space-y-6">
@@ -283,7 +255,6 @@
       </div>
     </template>
 
-    
     <script type="module" src="./src/main.js"></script>
   </body>
 </html>

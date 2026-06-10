@@ -90,6 +90,29 @@ export const DeviceStore = {
         }
         return this.devices[this.activeDeviceId];
     },
+    setActiveDevice(hwid) {
+        if (this.devices[hwid]) {
+            this.activeDeviceId = hwid;
+            this.save();
+            return true;
+        }
+        return false;
+    },
+
+    removeDevice(hwid) {
+        if (this.devices[hwid]) {
+            delete this.devices[hwid];
+            
+            // If we deleted the active device, fallback to another one or null
+            if (this.activeDeviceId === hwid) {
+                const remainingKeys = Object.keys(this.devices);
+                this.activeDeviceId = remainingKeys.length > 0 ? remainingKeys[0] : null;
+            }
+            this.save();
+            return true;
+        }
+        return false;
+    },
 
     // 🔥 This function was missing, which caused main.js to fail!
     updateDeviceState(hwid, newMetrics, newCapabilities = null) {

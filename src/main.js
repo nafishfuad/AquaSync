@@ -4,6 +4,7 @@ import { DeviceStore } from './state.js';
 import { API } from './api.js';
 import { buildInsightsPanel, buildControlPanel, buildSystemPanel, buildColorPanel } from './ui-factory.js';
 import { renderEmptyState, renderPairingWizard } from './components/system/PairingWizard.js';
+import { initTopNav } from './components/system/TopNav.js';
 
 const AquaSync = {
     pollingTimer: null,
@@ -11,29 +12,22 @@ const AquaSync = {
     async init() {
         console.log("🌊 AquaSync Ecosystem Initializing...");
         
-        // 1. Hydrate memory
         DeviceStore.init();
         
-        // 2. Security Check: Are there any devices?
         if (Object.keys(DeviceStore.devices).length === 0) {
-            // Hide the standard UI elements
             document.querySelector("main").classList.add("hidden");
             document.querySelector("nav").classList.add("hidden");
-            document.querySelector("header").classList.add("hidden");
-            
-            // Show the pairing flow
+            document.getElementById("slot-top-nav").classList.add("hidden"); // Hide nav slot
             renderEmptyState();
-            return; // Stop initialization here.
+            return; 
         }
 
-        // 3. Initial UI Setup
-        this.updateHeader();
+        // Initialize the new double navigation bar
+        initTopNav();
+
         this.switchTab('page-control'); 
-        
-        // 🔥 CRITICAL FIX: Draw the UI instantly from offline memory!
         this.renderActiveUI();
 
-        // 4. Start the Hybrid Polling Engine
         this.runSyncLoop();
         this.pollingTimer = setInterval(() => this.runSyncLoop(), 5000);
     },
@@ -62,14 +56,6 @@ const AquaSync = {
 
         // Scroll to top cleanly
         window.scrollTo({ top: 0, behavior: 'smooth' });
-    },
-
-    updateHeader() {
-        const device = DeviceStore.getActiveDevice();
-        if (device) {
-            const modelEl = document.getElementById("ui-active-model");
-            if (modelEl) modelEl.innerText = device.model;
-        }
     },
 
     setConnectionStatus(status) {

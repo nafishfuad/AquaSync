@@ -12,20 +12,15 @@ export function renderPairingWizard(onComplete) {
     slot.innerHTML = "";
     const clone = template.content.cloneNode(true);
     
-    const viewListen = clone.querySelector("#view-listen");
-    const viewFound = clone.querySelector("#view-found");
-    const txtHwid = clone.querySelector("#txt-found-hwid");
-    const btnClose = clone.querySelector("#btn-close-wizard");
-    const btnSend = clone.querySelector("#btn-send-creds");
-
-    let secureToken = null;
-    let discoveredHwid = null;
-
+    // 1. IMMEDIATELY APPEND TO LIVE DOM
     slot.classList.remove("hidden");
     slot.classList.add("flex");
     slot.appendChild(clone);
 
-    // 1. Start Polling for the ESP32 Hotspot
+    let secureToken = null;
+    let discoveredHwid = null;
+
+    // 2. Start Polling for the ESP32 Hotspot
     const startHeartbeat = () => {
         heartbeatInterval = setInterval(async () => {
             const handshake = await API.checkHotspotHandshake();
@@ -34,33 +29,39 @@ export function renderPairingWizard(onComplete) {
                 secureToken = handshake.session_token;
                 discoveredHwid = handshake.hw_id;
                 
-                // Transition UI
-                txtHwid.innerText = `HW_ID: ${discoveredHwid}`;
-                viewListen.classList.add("hidden");
-                viewFound.classList.remove("hidden");
+                // Transition UI (Targeting live DOM elements)
+                document.getElementById("txt-found-hwid").innerText = `HW_ID: ${discoveredHwid}`;
+                document.getElementById("view-listen").classList.add("hidden");
+                document.getElementById("view-found").classList.remove("hidden");
             }
         }, 3000);
     };
 
     startHeartbeat();
 
-    // 2. Handle Closing the Modal
-    const closeModal = () => {
+    // 3. Handle Closing the Modal
+    const closeModal = (e) => {
+        if (e) e.stopPropagation(); // Prevents clicks from misfiring
         clearInterval(heartbeatInterval);
-        slot.classList.add("hidden");
-        slot.classList.remove("flex");
+        
         slot.innerHTML = "";
 
-        // 🔥 THE FIX: If they cancel pairing and have 0 devices, go back to the empty splash screen
+        // If they cancel pairing and have 0 devices, go back to the empty splash screen
         if (Object.keys(DeviceStore.devices).length === 0) {
             renderEmptyState();
+        } else {
+            // Otherwise, hide the overlay completely
+            slot.classList.add("hidden");
+            slot.classList.remove("flex");
         }
     };
 
-    btnClose.onclick = closeModal;
+    // Grab the live button and attach listener
+    document.getElementById("btn-close-wizard").addEventListener("click", closeModal);
 
-    // 3. Handle Submitting Credentials
-    btnSend.onclick = async () => {
+    // 4. Handle Submitting Credentials
+    const btnSend = document.getElementById("btn-send-creds");
+    btnSend.addEventListener("click", async () => {
         const ssid = document.getElementById("inp-ssid").value.trim();
         const pass = document.getElementById("inp-pass").value.trim();
         const deviceName = document.getElementById("inp-name").value.trim() || "AquaSync Controller";
@@ -90,7 +91,7 @@ export function renderPairingWizard(onComplete) {
             btnSend.classList.remove("opacity-50", "pointer-events-none");
             setTimeout(() => btnSend.innerHTML = `PAIR DEVICE`, 2000);
         }
-    };
+    });
 }
 
 // Renders the initial "No Devices Linked" screen
@@ -102,16 +103,18 @@ export function renderEmptyState() {
     slot.innerHTML = "";
     const clone = template.content.cloneNode(true);
     
-    clone.querySelector("#btn-start-discovery").onclick = () => {
+    // 1. Append to live DOM immediately!
+    slot.classList.remove("hidden");
+    slot.classList.add("flex");
+    slot.appendChild(clone);
+
+    // 2. Attach the click listener to the live element
+    document.getElementById("btn-start-discovery").addEventListener("click", () => {
         renderPairingWizard(() => {
             // Once paired, hide the empty state and reload the UI
             slot.classList.add("hidden");
             slot.classList.remove("flex");
             window.location.reload(); 
         });
-    };
-
-    slot.classList.remove("hidden");
-    slot.classList.add("flex");
-    slot.appendChild(clone);
+    });
 }
