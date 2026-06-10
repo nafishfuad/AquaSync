@@ -5,9 +5,7 @@ import { renderOverview } from './components/analytics/Overview.js';
 import { renderCharts } from './components/analytics/Charts.js';
 
 // --- Hardware Control Layer Imports ---
-import { renderModeBanner } from './components/hardware/ModeBanner.js';
-import { renderOverrideGrid } from './components/hardware/OverrideGrid.js';
-import { renderLiveDimmer } from './components/hardware/Dimmer.js';
+import { renderPrimaryControlCard } from './components/hardware/PrimaryControlCard.js';
 import { renderSchedulesStack } from './components/hardware/ScheduleCard.js';
 
 // --- Color Spectrum Layer Imports ---
@@ -42,42 +40,23 @@ export function buildInsightsPanel(device) {
  * Page 2: Renders the Primary Schedule & Override Panel
  */
 export function buildControlPanel(device, commandHook) {
-    const bannerSlot = document.getElementById("slot-control-mode-banner");
-    const gridSlot = document.getElementById("slot-hardware-override-grid");
-    const dimmerSlot = document.getElementById("slot-live-dimmer-wrapper");
+    const primaryCardSlot = document.getElementById("slot-primary-control-card");
     const scheduleSlot = document.getElementById("slot-schedules-stack");
 
-    if (!bannerSlot || !gridSlot || !dimmerSlot || !scheduleSlot) return;
+    if (!primaryCardSlot || !scheduleSlot) return;
 
-    bannerSlot.innerHTML = "";
-    gridSlot.innerHTML = "";
-    dimmerSlot.innerHTML = "";
+    primaryCardSlot.innerHTML = "";
     scheduleSlot.innerHTML = "";
 
-    const metrics = device.metrics;
-    const cap = device.capabilities;
+    // 1. Render the Unified Top Box (Banner, Grid, and Dimmer)
+    renderPrimaryControlCard(primaryCardSlot, device, commandHook);
 
-    // 1. Render Auto/Manual Global Switch Banner
-    renderModeBanner(bannerSlot, metrics.isAutoMode, (newAutoMode) => {
-        commandHook({ isAutoMode: newAutoMode });
-    });
-
-    // 2. Render Manual Override Quick Action Box Grid
-    renderOverrideGrid(gridSlot, device, commandHook);
-
-    // 3. Render Live Brightness Dimmer (Only responsive if in Manual Mode)
-    if (cap.hasLight) {
-        renderLiveDimmer(dimmerSlot, device, (newBrightness) => {
-            commandHook({ currentBrightness: newBrightness });
-        });
-    }
-
-    // 4. Render Layout Schedules (Primary Light, Dimming Ramps, CO2 limits, Fan windows)
+    // 2. Render Consolidated Schedule Cards
     renderSchedulesStack(scheduleSlot, device, commandHook);
 }
 
 /**
- * Page 3: Renders the WRGB Color Mix Matrix (Polymorphic Guarded)
+ * Page 3: Renders the WRGB Color Mix Matrix
  */
 export function buildColorPanel(device, commandHook) {
     const previewSlot = document.getElementById("slot-color-preview");
@@ -108,30 +87,6 @@ export function buildColorPanel(device, commandHook) {
 /**
  * Page 4: Renders System Utilities, Wi-Fi Configuration, and OTA Panels
  */
-export function buildSystemPanel(device, apiReference, commandHook) {
-    const systemSlot = document.getElementById("slot-network-manager-cards");
-    if (!systemSlot) return;
-
-    systemSlot.innerHTML = "";
-
-    // 1. Connection Status Card
-    renderConnection(systemSlot, device.network, () => {
-        if (confirm("Reset Wi-Fi stack? The controller will drop back to local hotspot configuration.")) {
-            apiReference.sendCommand(device, { command: "forget_wifi" });
-        }
-    });
-
-    // 2. Firmware Management Card
-    renderFirmware(systemSlot, device.firmware, (otaPayload) => {
-        apiReference.sendCommand(device, otaPayload);
-    });
-
-    // 3. Low-Level System Actions Card (Reboot/Reset)
-    renderMaintenance(systemSlot, (systemPayload) => {
-        apiReference.sendCommand(device, systemPayload);
-    });
-}
-
 export function buildSystemPanel(device, apiReference, commandHook) {
     const systemSlot = document.getElementById("slot-network-manager-cards");
     if (!systemSlot) return;

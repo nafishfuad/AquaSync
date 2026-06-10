@@ -7,6 +7,7 @@
 
     <link rel="manifest" href="./manifest.json" />
     <meta name="theme-color" content="#00f2fe" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
@@ -67,12 +68,10 @@
         <div id="slot-analytics-charts" class="space-y-6"></div>
       </section>
 
-      <section id="page-control" class="hidden space-y-6">
+      <section id="page-control" class="hidden animate-fade-in space-y-6">
         <h1 class="text-2xl font-bold text-white tracking-wide">Hardware Control</h1>
-        <div id="slot-control-mode-banner"></div>
-        <div id="slot-hardware-override-grid" class="grid grid-cols-2 gap-4"></div>
-        <div id="slot-live-dimmer-wrapper"></div>
-        <div id="slot-schedules-stack" class="space-y-6"></div>
+        <div id="slot-primary-control-card"></div>
+        <div id="slot-schedules-stack"></div>
       </section>
 
       <section id="page-color" class="hidden space-y-6">

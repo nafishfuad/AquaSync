@@ -1,68 +1,62 @@
 // src/components/hardware/OverrideGrid.js
 
 export function renderOverrideGrid(container, device, commandHook) {
-    const template = document.getElementById("tpl-quick-override-box");
-    if (!template) return;
-
-    const metrics = device.metrics;
+    const m = device.metrics;
     const cap = device.capabilities;
 
-    // Helper function to stamp out identical boxes with different colors
-    const createBox = (iconText, labelText, isOn, activeColorClass, onClick) => {
-        const clone = template.content.cloneNode(true);
-        const btn = clone.querySelector("button");
-        const icon = clone.querySelector(".tpl-box-icon");
-        const label = clone.querySelector(".tpl-box-label");
+    // 🔥 Reverted Container: Back to small square grid layout
+    container.innerHTML = `<div class="grid grid-cols-2 gap-4 mb-6" id="hardware-button-grid"></div>`;
+    const grid = container.querySelector('#hardware-button-grid');
 
-        icon.innerText = iconText;
-        label.innerText = labelText;
+    // Helper to generate glowing square quick-action buttons (matches old screenshots)
+    const createButton = (label, icon, isOn, stateKey) => {
+        const btn = document.createElement('button');
+        
+        // Dynamic styling for ON/OFF state (Heavy glows on aqua)
+        const activeContainer = isOn ? "bg-cardbg border-aqua shadow-[0_0_20px_rgba(0,242,254,0.15)]" : "bg-[#121212] border-gray-800 opacity-60 hover:opacity-100 hover:border-gray-700";
+        const iconColor = isOn ? "text-aqua drop-shadow-[0_0_12px_rgba(0,242,254,1)]" : "text-gray-600";
+        const textColor = isOn ? "text-aqua font-bold" : "text-gray-500 font-semibold";
+        const stateText = isOn ? "ON" : "OFF";
 
-        if (isOn) {
-            // Apply vibrant colored borders when ON
-            btn.className = `bg-cardbg border-2 ${activeColorClass} rounded-2xl p-4 flex flex-col items-center justify-center transition-all active:scale-95 shadow-[0_0_15px_rgba(255,255,255,0.05)]`;
-            label.classList.replace("text-gray-500", activeColorClass.replace("border-", "text-"));
-        } else {
-            // Dark muted state when OFF
-            btn.className = "bg-cardbg border-2 border-gray-800 hover:border-gray-700 rounded-2xl p-4 flex flex-col items-center justify-center transition-all active:scale-95 shadow-md";
-        }
-
-        btn.addEventListener("click", () => {
-            // Force manual mode whenever a user explicitly taps an override
-            if (metrics.isAutoMode) commandHook({ isAutoMode: false });
-            onClick();
-        });
-
-        container.appendChild(clone);
+        btn.className = `flex flex-col items-center justify-center py-6 rounded-2xl border ${activeContainer} transition-all active:scale-95 duration-300 h-full`;
+        btn.innerHTML = `
+            <span class="text-3xl mb-3 ${iconColor} transition-all duration-300">${icon}</span>
+            <span class="text-[10px] uppercase tracking-widest ${textColor} text-center">${label}</span>
+            <span class="text-[9px] font-bold text-gray-600 mt-0.5">${stateText}</span>
+        `;
+        
+        btn.onclick = () => {
+            // FIRE THE COMMAND: Snap to Manual AND flip specific state
+            commandHook({ 
+                isAutoMode: false, 
+                [stateKey]: !isOn 
+            });
+        };
+        grid.appendChild(btn);
     };
 
-    // 1. Light Box (Amber)
-    if (cap.hasLight) {
-        createBox("💡", `Light: ${metrics.isLightOn ? 'ON' : 'OFF'}`, metrics.isLightOn, "border-amber-400", () => {
-            commandHook({ isLightOn: !metrics.isLightOn, currentBrightness: !metrics.isLightOn ? 40 : 0 });
-        });
-    }
-
-    // 2. CO2 Box (Green)
-    if (cap.hasCO2) {
-        createBox("🫧", `CO2: ${metrics.isCO2On ? 'ON' : 'OFF'}`, metrics.isCO2On, "border-green-400", () => {
-            commandHook({ isCO2On: !metrics.isCO2On });
-        });
-    }
+    // 1. Render Light (Always visible if hardware supports it)
+    if (cap.hasLight) createButton('Light', '💡', m.isLightOn, 'isLightOn');
     
-    // 3. Fan Box (Blue / Disabled State)
-    if (cap.hasFan) {
-        if (metrics.isFanEnabled) {
-            createBox("🌀", `Fan: ${metrics.isFanOn ? 'ON' : 'OFF'}`, metrics.isFanOn, "border-blue-400", () => {
-                commandHook({ isFanOn: !metrics.isFanOn });
-            });
-        } else {
-            // Renders the grayed-out "Disabled" state from your screenshot
-            const clone = template.content.cloneNode(true);
-            const btn = clone.querySelector("button");
-            btn.className = "bg-cardbg border-2 border-gray-800 rounded-2xl p-4 flex flex-col items-center justify-center grayscale opacity-50 cursor-not-allowed";
-            clone.querySelector(".tpl-box-icon").innerText = "🌀";
-            clone.querySelector(".tpl-box-label").innerText = "Fan: Disabled";
-            container.appendChild(clone);
-        }
+    // 2. Render CO2 (Always visible if hardware supports it)
+    if (cap.hasCO2) createButton('CO2 Injection', '🫧', m.isCO2On, 'isCO2On');
+    
+    // 3. Render Fan (ONLY visible if hardware supports it AND the user enabled the Fan module)
+    if (cap.hasFan && m.isFanEnabled) {
+        const isOn = m.isFanOn;
+        // Blue styling for fan
+        const activeContainer = isOn ? "bg-cardbg border-blue-400 shadow-[0_0_20px_rgba(96,165,250,0.15)]" : "bg-[#121212] border-gray-800 opacity-60";
+        const iconColor = isOn ? "text-blue-400 drop-shadow-[0_0_12px_rgba(96,165,250,1)] animate-spin-slow" : "text-gray-600";
+        const textColor = isOn ? "text-blue-400 font-bold" : "text-gray-500 font-semibold";
+        
+        const btn = document.createElement('button');
+        btn.className = `flex flex-col items-center justify-center py-6 rounded-2xl border ${activeContainer} transition-all active:scale-95 duration-300 h-full`;
+        btn.innerHTML = `
+            <span class="text-3xl mb-3 ${iconColor}">${isOn ? '🌀' : '❄️'}</span>
+            <span class="text-[10px] uppercase tracking-widest ${textColor} text-center">Cooling Fan</span>
+            <span class="text-[9px] font-bold text-gray-600 mt-0.5">${isOn ? 'ON' : 'OFF'}</span>
+        `;
+        btn.onclick = () => commandHook({ isAutoMode: false, isFanOn: !isOn });
+        grid.appendChild(btn);
     }
 }

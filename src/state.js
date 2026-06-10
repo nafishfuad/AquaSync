@@ -1,19 +1,18 @@
 // src/state.js
 
-/**
- * AquaSync Core State Store
- * Acts as the absolute single source of truth for all device profiles,
- * operational live metrics, capabilities, and analytics caches.
- */
 export const DeviceStore = {
     activeDeviceId: null,
     devices: {},
 
-    /**
-     * Hydrates the local state store directly from browser memory.
-     */
     init() {
         try {
+            // 🔥 AUTO-WIPE: If the browser has corrupted data from an old version, nuke it.
+            if (!localStorage.getItem("aquasync_v2_1")) {
+                console.warn("[STATE] Performing hard migration wipe to clear corrupted memory...");
+                localStorage.clear();
+                localStorage.setItem("aquasync_v2_1", "true"); // Tag it so it never wipes again
+            }
+
             const storedData = localStorage.getItem("aquasync_ecosystem");
             if (storedData) {
                 this.devices = JSON.parse(storedData);
@@ -21,14 +20,13 @@ export const DeviceStore = {
             this.activeDeviceId = localStorage.getItem("aquasync_active_hwid");
 
         } catch (error) {
-            console.error("[STATE] Flash memory hydration failed. Initializing empty registries.", error);
+            console.error("[STATE] Memory validation failed. Resetting ecosystem.", error);
+            localStorage.clear();
             this.devices = {};
+            this.activeDeviceId = null;
         }
     },
 
-    /**
-     * Registers a completely new physical controller to the profile layer
-     */
     addDevice(hwid, model = "AS-Standard", name = "New Aquarium Tank") {
         this.devices[hwid] = {
             hwid: hwid,
@@ -47,7 +45,7 @@ export const DeviceStore = {
                 hasLight: true,
                 hasCO2: true,
                 hasFan: true,
-                hasColorSpectrum: true // AS-Standard includes native WRGB mixing
+                hasColorSpectrum: true 
             },
             metrics: {
                 isAutoMode: true,
@@ -81,9 +79,6 @@ export const DeviceStore = {
         this.save();
     },
 
-    /**
-     * Safely retrieves the active device database footprint
-     */
     getActiveDevice() {
         if (!this.activeDeviceId || !this.devices[this.activeDeviceId]) {
             const keys = Object.keys(this.devices);
@@ -96,38 +91,27 @@ export const DeviceStore = {
         return this.devices[this.activeDeviceId];
     },
 
-    /**
-     * Atomic transaction handler for raw state metric payloads received from hardware
-     */
-    updateDeviceMetrics(hwid, newMetrics) {
+    // 🔥 This function was missing, which caused main.js to fail!
+    updateDeviceState(hwid, newMetrics, newCapabilities = null) {
         if (!this.devices[hwid]) return;
         
-        // Merge runtime metrics dynamically without obliterating configuration schemas
-        this.devices[hwid].metrics = { ...this.devices[hwid].metrics, ...newMetrics };
+        if (newMetrics) {
+            this.devices[hwid].metrics = { ...this.devices[hwid].metrics, ...newMetrics };
+        }
+        if (newCapabilities) {
+            this.devices[hwid].capabilities = { ...this.devices[hwid].capabilities, ...newCapabilities };
+        }
         this.save();
     },
 
-    /**
-     * Updates peripheral capabilities when the hardware delivers its layout configuration
-     */
-    updateDeviceCapabilities(hwid, newCaps) {
-        if (!this.devices[hwid] || !newCaps) return;
-        this.devices[hwid].capabilities = { ...this.devices[hwid].capabilities, ...newCaps };
+    // 🔥 This handles the Pairing Wizard network connection status
+    updateNetwork(hwid, ip, isConnected) {
+        if (!this.devices[hwid]) return;
+        if (ip !== null) this.devices[hwid].localIP = ip;
+        this.devices[hwid].network.isWiFiConnected = isConnected;
         this.save();
     },
 
-    /**
-     * Commits analytics arrays safely into browser local memory caches
-     */
-    updateDeviceAnalytics(hwid, analytics) {
-        if (!this.devices[hwid] || !analytics) return;
-        this.devices[hwid].analyticsData = { ...this.devices[hwid].analyticsData, ...analytics };
-        this.save();
-    },
-
-    /**
-     * Commits the structural state values down into the physical localStorage pipeline
-     */
     save() {
         try {
             localStorage.setItem("aquasync_ecosystem", JSON.stringify(this.devices));
@@ -135,7 +119,7 @@ export const DeviceStore = {
                 localStorage.setItem("aquasync_active_hwid", this.activeDeviceId);
             }
         } catch (error) {
-            console.error("[STATE] Critical exception writing values to browser flash NVS.", error);
+            console.error("[STATE] Error writing to browser storage.", error);
         }
     }
 };

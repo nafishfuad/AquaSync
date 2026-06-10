@@ -50,6 +50,11 @@ export function renderPairingWizard(onComplete) {
         slot.classList.add("hidden");
         slot.classList.remove("flex");
         slot.innerHTML = "";
+
+        // 🔥 THE FIX: If they cancel pairing and have 0 devices, go back to the empty splash screen
+        if (Object.keys(DeviceStore.devices).length === 0) {
+            renderEmptyState();
+        }
     };
 
     btnClose.onclick = closeModal;
@@ -74,11 +79,11 @@ export function renderPairingWizard(onComplete) {
             btnSend.innerHTML = `✅ Paired!`;
             // Save the new device to browser memory
             DeviceStore.addDevice(discoveredHwid, "AS-Standard", deviceName);
-            DeviceStore.updateNetwork(discoveredHwid, null, true); // Mark as initially connected
+            DeviceStore.updateNetwork(discoveredHwid, null, true); 
             
             setTimeout(() => {
                 closeModal();
-                onComplete(); // Tells main.js to refresh the whole app
+                if (onComplete) onComplete(); 
             }, 1500);
         } else {
             btnSend.innerHTML = `❌ Failed. Try Again`;
@@ -89,7 +94,7 @@ export function renderPairingWizard(onComplete) {
 }
 
 // Renders the initial "No Devices Linked" screen
-export function renderEmptyState(onStartPairing) {
+export function renderEmptyState() {
     const slot = document.getElementById("slot-global-overlays");
     const template = document.getElementById("tpl-empty-splash");
     if (!template || !slot) return;
