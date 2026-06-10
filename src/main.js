@@ -7,11 +7,8 @@ import { renderEmptyState, renderPairingWizard } from './components/system/Pairi
 import { initTopNav } from './components/system/TopNav.js';
 
 const AquaSync = {
-    pollingTimer: null,
-
     async init() {
         console.log("🌊 AquaSync Ecosystem Initializing...");
-        
         DeviceStore.init();
         
         if (Object.keys(DeviceStore.devices).length === 0) {
@@ -26,10 +23,10 @@ const AquaSync = {
         this.switchTab('page-control'); 
         this.renderActiveUI();
 
-        // 1. Fetch data once on load
+        // 1. Fetch data ONCE on initial load
         this.runSyncLoop();
 
-        // 2. THE FIX: Only fetch data again if the user switches tabs and comes back
+        // 2. 🔥 THE FIX: Fetch data ONLY when returning to the app, destroying the spam loop!
         document.addEventListener("visibilitychange", () => {
             if (document.visibilityState === 'visible') {
                 this.runSyncLoop();
@@ -38,7 +35,6 @@ const AquaSync = {
     },
 
     switchTab(targetId) {
-        // Hide all pages
         const pages = ['page-insights', 'page-control', 'page-color', 'page-network'];
         pages.forEach(id => {
             const pageEl = document.getElementById(id);
@@ -50,7 +46,6 @@ const AquaSync = {
             }
         });
 
-        // Show target page
         const targetPage = document.getElementById(targetId);
         const targetNav = document.getElementById(`nav-${targetId}`);
         if (targetPage) targetPage.classList.remove('hidden');
@@ -58,8 +53,6 @@ const AquaSync = {
             targetNav.classList.add('text-aqua');
             targetNav.classList.remove('text-gray-500');
         }
-
-        // Scroll to top cleanly
         window.scrollTo({ top: 0, behavior: 'smooth' });
     },
 
@@ -81,9 +74,8 @@ const AquaSync = {
         if (response && response.data) {
             this.setConnectionStatus(response.source);
             
-            // THE IP FIX: If Firebase knows the new local IP, save it so we can talk locally!
+            // 🔥 Auto-Heal Local IP from Firebase
             if (response.data.localIP && response.data.localIP !== device.localIP) {
-                console.log("📡 Found new local IP from Cloud:", response.data.localIP);
                 DeviceStore.updateNetwork(device.hwid, response.data.localIP, true);
             }
 
@@ -103,29 +95,20 @@ const AquaSync = {
         const device = DeviceStore.getActiveDevice();
         if (!device) return;
 
-        // Create the callback hook that the UI components use
         const commandHook = async (payload, fastUI = false) => {
+            // 🔥 REMOVED THE BAD AUTO-MODE OVERRIDE LOGIC HERE
             
-            // 🔥 OFFLINE SIMULATION FIX:
-            // If the user clicks "Resume Auto", mock the ESP32 hardware syncing the schedule
-            if (payload.isAutoMode === true) {
-                payload.isLightOn = true;
-                payload.isCO2On = true;
-                payload.isFanOn = false;
-                payload.currentBrightness = device.metrics.maxBrightness;
-            }
-            
-            // Optimistic fast-update to UI
             DeviceStore.updateDeviceState(device.hwid, payload);
-            this.renderActiveUI();
             
-            // Background push to hardware (Throttle if using slider fastUI)
+            // 🔥 THE FIX: Only redraw the screen if it's NOT a fastUI slider change
             if (!fastUI) {
+                this.renderActiveUI();
                 await API.sendCommand(device, payload);
+            } else {
+                API.sendCommand(device, payload);
             }
         };
 
-        // Command the UI Factory to build/update the DOM
         buildControlPanel(device, commandHook);
         buildInsightsPanel(device);
         buildColorPanel(device, commandHook);
@@ -133,10 +116,5 @@ const AquaSync = {
     }
 };
 
-// Bind to window so HTML inline onclick handlers (nav buttons) can access it
 window.AquaSync = AquaSync;
-
-// Boot the app when the DOM is ready
-document.addEventListener("DOMContentLoaded", () => {
-    AquaSync.init();
-});
+document.addEventListener("DOMContentLoaded", () => AquaSync.init());
