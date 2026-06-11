@@ -60,7 +60,7 @@ export const DeviceStore = {
                 isDimmerEnabled: true,
                 sunriseMins: 20,
                 sunsetMins: 20,
-                isCO2ScheduleSeparate: true,
+                isCO2ScheduleSeparate: false,
                 co2OnTime: "16:50",
                 co2OffTime: "22:40",
                 recoveryMins: 5,

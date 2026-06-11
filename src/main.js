@@ -5,7 +5,7 @@ import { API } from './api.js';
 import { buildInsightsPanel, buildControlPanel, buildSystemPanel, buildColorPanel } from './ui-factory.js';
 import { renderEmptyState, renderPairingWizard } from './components/system/PairingWizard.js';
 import { initTopNav } from './components/system/TopNav.js';
-import { debounce } from './utils.js'; // 🔥 Importing the Debounce Tool
+import { debounce } from './utils.js'; 
 
 const AquaSync = {
     async init() {
@@ -24,10 +24,8 @@ const AquaSync = {
         this.switchTab('page-control'); 
         this.renderActiveUI();
 
-        // 1. Fetch data ONCE on initial load
         this.runSyncLoop();
 
-        // 2. Fetch data ONLY when returning to the app, destroying the spam loop!
         document.addEventListener("visibilitychange", () => {
             if (document.visibilityState === 'visible') {
                 this.runSyncLoop();
@@ -75,7 +73,6 @@ const AquaSync = {
         if (response && response.data) {
             this.setConnectionStatus(response.source);
             
-            // 🔥 Auto-Heal Local IP from Firebase
             if (response.data.localIP && response.data.localIP !== device.localIP) {
                 DeviceStore.updateNetwork(device.hwid, response.data.localIP, true);
             }
@@ -96,29 +93,32 @@ const AquaSync = {
         const device = DeviceStore.getActiveDevice();
         if (!device) return;
 
-        // 🔥 THE DEBOUNCER: Waits 300ms after you stop moving the slider before sending to the network
         const debouncedNetworkSend = debounce(async (targetDevice, payload) => {
             const res = await API.sendCommand(targetDevice, payload);
-            // If the ESP32 replied instantly with its updated state, sync it quietly to memory
             if (res && res.returnedState) {
                 DeviceStore.updateDeviceState(targetDevice.hwid, res.returnedState);
+                AquaSync.renderActiveUI(); // 🔥 FIX: Tell the UI to redraw after slider release!
             }
         }, 300);
 
         const commandHook = async (payload, fastUI = false) => {
-            // 1. Instantly update the Local Cache (UI stays buttery smooth without waiting for WiFi)
+            
+            // 🔥 CO2 VISUAL SYNC: If you toggle Light, and CO2 isn't separate, visually toggle CO2 instantly!
+            if (payload.hasOwnProperty("isLightOn") && !device.metrics.isCO2ScheduleSeparate) {
+                payload.isCO2On = payload.isLightOn;
+            }
+
+            // 1. Instantly update the Local Cache
             DeviceStore.updateDeviceState(device.hwid, payload);
 
             if (!fastUI) {
-                // For standard buttons/toggles -> Send Immediately and Redraw UI
-                this.renderActiveUI();
+                AquaSync.renderActiveUI(); // Redraw immediately for snappy button feels
                 const res = await API.sendCommand(device, payload);
                 if (res && res.returnedState) {
                     DeviceStore.updateDeviceState(device.hwid, res.returnedState);
-                    this.renderActiveUI(); // Force a final redraw to match the absolute hardware truth
+                    AquaSync.renderActiveUI(); // 🔥 FIX: Final redraw to lock in hardware truth
                 }
             } else {
-                // For Sliders & Color Wheels -> Send through the Debounce Dam
                 debouncedNetworkSend(device, payload);
             }
         };
