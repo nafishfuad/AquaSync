@@ -1,5 +1,12 @@
 // src/state.js
 
+// Helper to turn raw minutes into "00h 00m" format
+function formatTime(minutes) {
+    const h = Math.floor(minutes / 60).toString().padStart(2, '0');
+    const m = (minutes % 60).toString().padStart(2, '0');
+    return `${h}h ${m}m`;
+}
+
 export const DeviceStore = {
     activeDeviceId: null,
     devices: {},
@@ -124,7 +131,38 @@ export const DeviceStore = {
             if (newMetrics.deviceName) {
                 this.devices[hwid].name = newMetrics.deviceName;
             }
+
+            // 🔥 THE ANALYTICS CRUNCHER
+            if (newMetrics.hourlyData && newMetrics.dailyData) {
+                const todayTotal = newMetrics.hourlyData.reduce((a, b) => a + b, 0);
+                // Combine today's running total with historical totals for accurate 7/30 day readouts
+                const weekTotal = newMetrics.dailyData.slice(0, 6).reduce((a, b) => a + b, 0) + todayTotal;
+                const monthTotal = newMetrics.dailyData.slice(0, 29).reduce((a, b) => a + b, 0) + todayTotal;
+
+                this.devices[hwid].analyticsData = {
+                    today: { 
+                        totalActive: formatTime(todayTotal), 
+                        loadShedding: "00h 00m", 
+                        hourlyGraph: newMetrics.hourlyData 
+                    },
+                    week: { 
+                        totalActive: formatTime(weekTotal), 
+                        avgLight: formatTime(Math.round(weekTotal / 7)), 
+                        loadShedding: "00h 00m", 
+                        // Reverse the array so the oldest day is on the left side of the chart
+                        dailyGraph: newMetrics.dailyData.slice(0, 7).reverse() 
+                    },
+                    month: { 
+                        totalActive: formatTime(monthTotal), 
+                        avgLight: formatTime(Math.round(monthTotal / 30)), 
+                        loadShedding: "00h 00m", 
+                        // Reverse the array so the oldest day is on the left side of the chart
+                        dailyGraph: newMetrics.dailyData.reverse()
+                    }
+                };
+            }
         }
+        
         if (newCapabilities) {
             this.devices[hwid].capabilities = { ...this.devices[hwid].capabilities, ...newCapabilities };
         }

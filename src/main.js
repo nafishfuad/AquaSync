@@ -113,18 +113,10 @@ const AquaSync = {
 
         const commandHook = async (payload, fastUI = false) => {
             
-            // 1. Light overrides CO2 (Visual Sync for the UI)
-            if (payload.hasOwnProperty("isLightOn") && !device.metrics.isCO2ScheduleSeparate) {
-                payload.isCO2On = payload.isLightOn;
-            }
-
-            // 🔥 BUG 2 FIX: The Auto-Decoupler
-            // If the user clicks the CO2 button manually, but they are currently slaved together...
-            if (payload.hasOwnProperty("isCO2On") && !payload.hasOwnProperty("isLightOn") && !payload.hasOwnProperty("isCO2ScheduleSeparate")) {
-                if (!device.metrics.isCO2ScheduleSeparate) {
-                    payload.isCO2ScheduleSeparate = true; // Auto-detach them!
-                    DeviceStore.updateDeviceState(device.hwid, { isCO2ScheduleSeparate: true });
-                }
+            // 1. Light overrides CO2 (Visual Sync for the UI in Manual Mode)
+            // If the user turns the light on/off, and they are linked, make sure CO2 follows!
+            if ((payload.hasOwnProperty("isLightOn") || payload.hasOwnProperty("currentBrightness")) && !device.metrics.isCO2ScheduleSeparate) {
+                payload.isCO2On = payload.hasOwnProperty("isLightOn") ? payload.isLightOn : (payload.currentBrightness > 0);
             }
 
             // Instantly update the Local Cache
