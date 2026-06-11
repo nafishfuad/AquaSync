@@ -21,9 +21,12 @@ const AquaSync = {
         }
 
         initTopNav();
-        this.switchTab('page-control'); 
+        
+        // 🔥 THE REFRESH FIX: Read the last open tab from memory (default to page-control)
+        const lastOpenTab = localStorage.getItem('aquasync_active_tab') || 'page-control';
+        this.switchTab(lastOpenTab); 
+        
         this.renderActiveUI();
-
         this.runSyncLoop();
 
         document.addEventListener("visibilitychange", () => {
@@ -34,6 +37,9 @@ const AquaSync = {
     },
 
     switchTab(targetId) {
+        // 🔥 THE REFRESH FIX: Save the new tab to memory whenever you click a nav button
+        localStorage.setItem('aquasync_active_tab', targetId);
+
         const pages = ['page-insights', 'page-control', 'page-color', 'page-network'];
         pages.forEach(id => {
             const pageEl = document.getElementById(id);
@@ -52,7 +58,11 @@ const AquaSync = {
             targetNav.classList.add('text-aqua');
             targetNav.classList.remove('text-gray-500');
         }
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        
+        // Only scroll to top if we are actually clicking a tab, not on page load
+        if (event && event.type === 'click') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
     },
 
     setConnectionStatus(status) {
@@ -103,20 +113,29 @@ const AquaSync = {
 
         const commandHook = async (payload, fastUI = false) => {
             
-            // 🔥 CO2 VISUAL SYNC: If you toggle Light, and CO2 isn't separate, visually toggle CO2 instantly!
+            // 1. Light overrides CO2 (Visual Sync for the UI)
             if (payload.hasOwnProperty("isLightOn") && !device.metrics.isCO2ScheduleSeparate) {
                 payload.isCO2On = payload.isLightOn;
             }
 
-            // 1. Instantly update the Local Cache
+            // 🔥 BUG 2 FIX: The Auto-Decoupler
+            // If the user clicks the CO2 button manually, but they are currently slaved together...
+            if (payload.hasOwnProperty("isCO2On") && !payload.hasOwnProperty("isLightOn") && !payload.hasOwnProperty("isCO2ScheduleSeparate")) {
+                if (!device.metrics.isCO2ScheduleSeparate) {
+                    payload.isCO2ScheduleSeparate = true; // Auto-detach them!
+                    DeviceStore.updateDeviceState(device.hwid, { isCO2ScheduleSeparate: true });
+                }
+            }
+
+            // Instantly update the Local Cache
             DeviceStore.updateDeviceState(device.hwid, payload);
 
             if (!fastUI) {
-                AquaSync.renderActiveUI(); // Redraw immediately for snappy button feels
+                AquaSync.renderActiveUI(); 
                 const res = await API.sendCommand(device, payload);
                 if (res && res.returnedState) {
                     DeviceStore.updateDeviceState(device.hwid, res.returnedState);
-                    AquaSync.renderActiveUI(); // 🔥 FIX: Final redraw to lock in hardware truth
+                    AquaSync.renderActiveUI(); 
                 }
             } else {
                 debouncedNetworkSend(device, payload);

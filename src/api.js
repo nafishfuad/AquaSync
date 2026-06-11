@@ -119,12 +119,13 @@ export const API = {
         return { success: false, source: "none", returnedState: null };
     },
 
-    async sendWifiProvisioning(ssid, pass, token) {
+    // 🔥 THE NAME FIX: Added 'deviceName' to the arguments and body
+    async sendWifiProvisioning(ssid, pass, token, deviceName) {
         try {
             const response = await fetchWithTimeout('http://192.168.4.1/wifi', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ssid, pass, token })
+                body: JSON.stringify({ ssid, pass, token, deviceName }) // Bundle it here!
             }, 10000); 
             
             return response.ok;

@@ -74,7 +74,8 @@ export function renderPairingWizard(onComplete) {
         btnSend.innerHTML = `<span class="animate-spin inline-block mr-2">⏳</span> Sending...`;
         btnSend.classList.add("opacity-50", "pointer-events-none");
 
-        const success = await API.sendWifiProvisioning(ssid, pass, secureToken);
+        // 🔥 PROBLEM 1 FIX: Pass the deviceName into the API so the ESP32 remembers it!
+        const success = await API.sendWifiProvisioning(ssid, pass, secureToken, deviceName);
 
         if (success) {
             btnSend.innerHTML = `✅ Paired!`;
