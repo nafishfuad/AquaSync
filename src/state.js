@@ -10,7 +10,7 @@ export const DeviceStore = {
             if (!localStorage.getItem("aquasync_v2_1")) {
                 console.warn("[STATE] Performing hard migration wipe to clear corrupted memory...");
                 localStorage.clear();
-                localStorage.setItem("aquasync_v2_1", "true"); // Tag it so it never wipes again
+                localStorage.setItem("aquasync_v2_1", "true"); 
             }
 
             const storedData = localStorage.getItem("aquasync_ecosystem");
@@ -38,7 +38,7 @@ export const DeviceStore = {
                 ssid: "Disconnected"
             },
             firmware: {
-                current: "v1.0.0",
+                current: "v2.0.0",
                 latest: "Checking..."
             },
             capabilities: {
@@ -90,6 +90,7 @@ export const DeviceStore = {
         }
         return this.devices[this.activeDeviceId];
     },
+
     setActiveDevice(hwid) {
         if (this.devices[hwid]) {
             this.activeDeviceId = hwid;
@@ -102,8 +103,6 @@ export const DeviceStore = {
     removeDevice(hwid) {
         if (this.devices[hwid]) {
             delete this.devices[hwid];
-            
-            // If we deleted the active device, fallback to another one or null
             if (this.activeDeviceId === hwid) {
                 const remainingKeys = Object.keys(this.devices);
                 this.activeDeviceId = remainingKeys.length > 0 ? remainingKeys[0] : null;
@@ -114,12 +113,17 @@ export const DeviceStore = {
         return false;
     },
 
-    // 🔥 This function was missing, which caused main.js to fail!
     updateDeviceState(hwid, newMetrics, newCapabilities = null) {
         if (!this.devices[hwid]) return;
         
         if (newMetrics) {
+            // Delta Update: Merge only changed data into metrics
             this.devices[hwid].metrics = { ...this.devices[hwid].metrics, ...newMetrics };
+            
+            // Check if the payload contains a custom device name
+            if (newMetrics.deviceName) {
+                this.devices[hwid].name = newMetrics.deviceName;
+            }
         }
         if (newCapabilities) {
             this.devices[hwid].capabilities = { ...this.devices[hwid].capabilities, ...newCapabilities };
@@ -127,7 +131,6 @@ export const DeviceStore = {
         this.save();
     },
 
-    // 🔥 This handles the Pairing Wizard network connection status
     updateNetwork(hwid, ip, isConnected) {
         if (!this.devices[hwid]) return;
         if (ip !== null) this.devices[hwid].localIP = ip;

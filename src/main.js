@@ -5,6 +5,7 @@ import { API } from './api.js';
 import { buildInsightsPanel, buildControlPanel, buildSystemPanel, buildColorPanel } from './ui-factory.js';
 import { renderEmptyState, renderPairingWizard } from './components/system/PairingWizard.js';
 import { initTopNav } from './components/system/TopNav.js';
+import { debounce } from './utils.js'; // 🔥 Importing the Debounce Tool
 
 const AquaSync = {
     async init() {
@@ -26,7 +27,7 @@ const AquaSync = {
         // 1. Fetch data ONCE on initial load
         this.runSyncLoop();
 
-        // 2. 🔥 THE FIX: Fetch data ONLY when returning to the app, destroying the spam loop!
+        // 2. Fetch data ONLY when returning to the app, destroying the spam loop!
         document.addEventListener("visibilitychange", () => {
             if (document.visibilityState === 'visible') {
                 this.runSyncLoop();
@@ -95,17 +96,30 @@ const AquaSync = {
         const device = DeviceStore.getActiveDevice();
         if (!device) return;
 
+        // 🔥 THE DEBOUNCER: Waits 300ms after you stop moving the slider before sending to the network
+        const debouncedNetworkSend = debounce(async (targetDevice, payload) => {
+            const res = await API.sendCommand(targetDevice, payload);
+            // If the ESP32 replied instantly with its updated state, sync it quietly to memory
+            if (res && res.returnedState) {
+                DeviceStore.updateDeviceState(targetDevice.hwid, res.returnedState);
+            }
+        }, 300);
+
         const commandHook = async (payload, fastUI = false) => {
-            // 🔥 REMOVED THE BAD AUTO-MODE OVERRIDE LOGIC HERE
-            
+            // 1. Instantly update the Local Cache (UI stays buttery smooth without waiting for WiFi)
             DeviceStore.updateDeviceState(device.hwid, payload);
-            
-            // 🔥 THE FIX: Only redraw the screen if it's NOT a fastUI slider change
+
             if (!fastUI) {
+                // For standard buttons/toggles -> Send Immediately and Redraw UI
                 this.renderActiveUI();
-                await API.sendCommand(device, payload);
+                const res = await API.sendCommand(device, payload);
+                if (res && res.returnedState) {
+                    DeviceStore.updateDeviceState(device.hwid, res.returnedState);
+                    this.renderActiveUI(); // Force a final redraw to match the absolute hardware truth
+                }
             } else {
-                API.sendCommand(device, payload);
+                // For Sliders & Color Wheels -> Send through the Debounce Dam
+                debouncedNetworkSend(device, payload);
             }
         };
 

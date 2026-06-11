@@ -49,9 +49,9 @@ export const API = {
             }
         }
 
-        // 3. Fallback to Cloud (Firebase)
+        // 3. Fallback to Cloud (Firebase) - Added timestamp query to bypass browser cache
         try {
-            const response = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/state.json`);
+            const response = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/state.json?t=${Date.now()}`);
             if (!response.ok) throw new Error("Cloud HTTP Error");
             const data = await response.json();
             return { source: "cloud", data };
@@ -63,22 +63,21 @@ export const API = {
 
     async checkHotspotHandshake() {
         try {
-            // ESP32 default AP IP address
             const response = await fetchWithTimeout('http://192.168.4.1/api/handshake', {}, 3000);
             if (response.ok) {
-                return await response.json(); // Returns { hw_id, session_token }
+                return await response.json(); 
             }
         } catch (err) {
-            return null; // Silent fail, we expect this to fail until they connect to the AP
+            return null; 
         }
         return null;
     },
 
     async sendCommand(device, payload) {
-        // Tag payload with our new Schema Version
+        // Tag payload with schema version and our Timestamp Shield (ts)
         const commandWrapper = {
             v: 2,
-            timestamp: Math.floor(Date.now() / 1000),
+            ts: Math.floor(Date.now() / 1000),
             ...payload
         };
 
@@ -92,7 +91,12 @@ export const API = {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(commandWrapper)
                 });
-                if (res.ok) return true;
+                
+                if (res.ok) {
+                    // 🔥 Capture the instant JSON state reply from the ESP32!
+                    const returnedData = await res.json();
+                    return { success: true, source: "local", returnedState: returnedData };
+                }
             } catch (err) {
                 console.warn("[API] Local command failed, routing to cloud.");
             }
@@ -100,16 +104,19 @@ export const API = {
 
         // Fallback to Cloud Patch
         try {
-            await fetch(`${FIREBASE_URL}/devices/${device.hwid}/commands.json`, {
+            const res = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/commands.json`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(commandWrapper)
             });
-            return true;
+            if (res.ok) {
+                return { success: true, source: "cloud", returnedState: null };
+            }
         } catch (err) {
             console.error("[API] Command delivery failed globally.");
-            return false;
         }
+        
+        return { success: false, source: "none", returnedState: null };
     },
 
     async sendWifiProvisioning(ssid, pass, token) {
@@ -118,12 +125,10 @@ export const API = {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ssid, pass, token })
-            }, 10000); // 10 second timeout because ESP32 needs time to process and save to flash
+            }, 10000); 
             
             return response.ok;
         } catch (err) {
-            // If the ESP32 reboots immediately upon success, it might drop the connection, 
-            // causing a fetch error. We can often treat a network drop here as a soft success.
             console.warn("[API] Provisioning connection dropped (Likely rebooting).");
             return true; 
         }
