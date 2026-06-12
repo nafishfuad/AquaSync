@@ -1,5 +1,8 @@
 // src/components/system/Maintenance.js
 
+import { DeviceStore } from '../../state.js';
+import { showSystemActionModal } from './SystemModals.js';
+
 export function renderMaintenance(container, commandHook) {
     const div = document.createElement('div');
     div.className = "bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800";
@@ -16,22 +19,40 @@ export function renderMaintenance(container, commandHook) {
         </div>
     `;
 
+    const activeDevice = DeviceStore.getActiveDevice();
+    const deviceName = activeDevice ? activeDevice.name : "this device";
+    const hwid = activeDevice ? activeDevice.hwid : null;
+
     div.querySelector('#btn-reboot').onclick = () => {
-        if (confirm("Are you sure you want to reboot the controller? It will briefly go offline.")) {
+        // Trigger the custom beautiful modal
+        showSystemActionModal('reboot', deviceName, () => {
+            // Send command to ESP32
             commandHook({ command: "reboot" });
-        }
+        });
     };
 
     div.querySelector('#btn-reset').onclick = () => {
-        if (confirm("WARNING: This will permanently erase all Wi-Fi settings, schedules, and analytics. You will need to set up the device again. Proceed?")) {
+        // Trigger the custom beautiful modal (Red Warning)
+        showSystemActionModal('reset', deviceName, () => {
+            // 1. Send command to ESP32
             commandHook({ command: "factory_reset" });
-            // Alert user that they will need to refresh the app
+            
+            // 2. 🔥 THE BUG FIX: Surgically remove ONLY this device from memory
+            if (hwid) {
+                DeviceStore.removeDevice(hwid);
+            }
+
+            // 3. Reload the UI gracefully
             setTimeout(() => {
-                alert("Device reset. The app will now reload.");
-                localStorage.clear();
-                window.location.reload();
-            }, 2000);
-        }
+                if (Object.keys(DeviceStore.devices).length === 0) {
+                    // Show the empty setup wizard
+                    window.location.reload(); 
+                } else {
+                    // Snap to the next available tank automatically
+                    window.location.reload(); 
+                }
+            }, 1000);
+        });
     };
 
     container.appendChild(div);
