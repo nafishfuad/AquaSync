@@ -30,7 +30,6 @@ export function renderOverview(container, device) {
     const statusGrid = clone.querySelector(".tpl-status-grid");
     let statuses = [];
 
-    // Light is always required
     statuses.push(`
         <div>
             <p class="text-[10px] text-gray-500 uppercase tracking-wider">Light Status</p>
@@ -58,7 +57,6 @@ export function renderOverview(container, device) {
         `);
     }
 
-    // Set grid columns based on how many devices are active (2 or 3)
     statusGrid.className = `grid grid-cols-${statuses.length} gap-4 pb-4 border-b border-gray-800/60`;
     statusGrid.innerHTML = statuses.join('');
 
@@ -70,7 +68,40 @@ export function renderOverview(container, device) {
     clone.querySelector(".tpl-recovery-val").innerText = `${m.recoveryMins} min`;
 
 
-    // --- 3. Dynamic Additional Rows (Separate CO2 & Fan) ---
+    // --- 3. 🔥 THE NEW LOAD SHEDDING UI ---
+    // Extract variables directly from our updated state.js
+    const loadSheddingText = device.analyticsData?.today?.loadShedding || "00h 00m";
+    const totalBlackoutText = device.analyticsData?.today?.totalBlackout || "00h 00m";
+    
+    // Only show the warning box if there has actually been a blackout today
+    if (loadSheddingText !== "00h 00m" || totalBlackoutText !== "00h 00m") {
+        const blackoutWarningHTML = `
+            <div class="mt-4 p-3 rounded-lg bg-red-900/20 border border-red-500/30 cursor-pointer transition-colors hover:bg-red-900/30" id="btn-blackout-modal">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-[10px] font-bold text-red-400 uppercase tracking-wider flex items-center gap-1">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                            Power Outage Detected
+                        </p>
+                        <p class="text-sm text-gray-300 mt-0.5">Disrupted Light: <span class="text-red-300 font-black">${loadSheddingText}</span></p>
+                    </div>
+                    <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </div>
+            </div>
+        `;
+
+        // Inject this directly above the dynamic rows (CO2/Fan)
+        const dynamicRowsNode = clone.querySelector(".tpl-dynamic-rows");
+        dynamicRowsNode.insertAdjacentHTML('beforebegin', blackoutWarningHTML);
+
+        // Attach the click event for the Modal
+        const btnBlackout = clone.querySelector("#btn-blackout-modal");
+        btnBlackout.addEventListener("click", () => {
+            alert(`🔌 TOTAL HOUSE OUTAGE: ${totalBlackoutText}\n☀️ LOST LIGHT SCHEDULE: ${loadSheddingText}\n\nThe 'Lost Light' tracks exactly how many minutes your fish spent in the dark while they were supposed to be illuminated. The 'Total Outage' includes blackouts that happened while the lights were already scheduled to be off.`);
+        });
+    }
+
+    // --- 4. Dynamic Additional Rows (Separate CO2 & Fan) ---
     const dynamicRows = clone.querySelector(".tpl-dynamic-rows");
     let rowsHTML = "";
 
@@ -91,7 +122,7 @@ export function renderOverview(container, device) {
 
     if (cap.hasFan && m.isFanEnabled) {
         rowsHTML += `
-            <div class="grid grid-cols-2 gap-4 pt-3 border-t border-gray-800/40">
+            <div class="grid grid-cols-2 gap-4 pt-3 border-t border-gray-800/40 mt-3">
                 <div>
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Surface Cooler Starts</p>
                     <span class="text-sm font-bold text-gray-300">${formatTime(m.fanOnTime)}</span>

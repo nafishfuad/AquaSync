@@ -77,7 +77,7 @@ export const DeviceStore = {
                 colorSpectrum: { w: 87, r: 100, g: 100, b: 100 }
             },
             analyticsData: {
-                today: { totalActive: "00h 00m", loadShedding: "00h 00m", hourlyGraph: Array(24).fill(0) },
+                today: { totalActive: "00h 00m", loadShedding: "00h 00m", totalBlackout: "00h 00m", hourlyGraph: Array(24).fill(0) },
                 week: { totalActive: "00h 00m", avgLight: "00h 00m", loadShedding: "00h 00m", dailyGraph: Array(7).fill(0) },
                 month: { totalActive: "00h 00m", avgLight: "00h 00m", loadShedding: "00h 00m", dailyGraph: Array(30).fill(0) }
             }
@@ -110,6 +110,8 @@ export const DeviceStore = {
     removeDevice(hwid) {
         if (this.devices[hwid]) {
             delete this.devices[hwid];
+            
+            // Reassign active ID safely
             if (this.activeDeviceId === hwid) {
                 const remainingKeys = Object.keys(this.devices);
                 this.activeDeviceId = remainingKeys.length > 0 ? remainingKeys[0] : null;
@@ -121,46 +123,59 @@ export const DeviceStore = {
     },
 
     updateDeviceState(hwid, newMetrics, newCapabilities = null) {
-        if (!this.devices[hwid]) return;
+        // 🔥 NULL SHIELD: Ignore corrupted database payloads that might wipe devices
+        if (!this.devices[hwid] || !newMetrics) return;
         
-        if (newMetrics) {
-            // Delta Update: Merge only changed data into metrics
-            this.devices[hwid].metrics = { ...this.devices[hwid].metrics, ...newMetrics };
+        // Delta Update: Merge only changed data into metrics
+        this.devices[hwid].metrics = { ...this.devices[hwid].metrics, ...newMetrics };
+        
+        // Custom device name override
+        if (newMetrics.deviceName) {
+            this.devices[hwid].name = newMetrics.deviceName;
+        }
+
+        // 🔥 THE ANALYTICS CRUNCHER
+        if (newMetrics.hourlyData && newMetrics.dailyData) {
+            const todayTotal = newMetrics.hourlyData.reduce((a, b) => a + b, 0);
             
-            // Check if the payload contains a custom device name
-            if (newMetrics.deviceName) {
-                this.devices[hwid].name = newMetrics.deviceName;
-            }
+            // 1. Dynamic Active Days Math
+            // Instead of blindly dividing by 7 or 30, count how many historical days actually have data
+            const activeHistoryWeek = newMetrics.dailyData.slice(0, 6).filter(mins => mins > 0).length;
+            const activeHistoryMonth = newMetrics.dailyData.slice(0, 29).filter(mins => mins > 0).length;
 
-            // 🔥 THE ANALYTICS CRUNCHER
-            if (newMetrics.hourlyData && newMetrics.dailyData) {
-                const todayTotal = newMetrics.hourlyData.reduce((a, b) => a + b, 0);
-                // Combine today's running total with historical totals for accurate 7/30 day readouts
-                const weekTotal = newMetrics.dailyData.slice(0, 6).reduce((a, b) => a + b, 0) + todayTotal;
-                const monthTotal = newMetrics.dailyData.slice(0, 29).reduce((a, b) => a + b, 0) + todayTotal;
+            // Today always counts as 1 active day. Add the historical active days.
+            const weekDivisor = Math.max(1, activeHistoryWeek + 1);
+            const monthDivisor = Math.max(1, activeHistoryMonth + 1);
 
-                this.devices[hwid].analyticsData = {
-                    today: { 
-                        totalActive: formatTime(todayTotal), 
-                        loadShedding: "00h 00m", 
-                        hourlyGraph: newMetrics.hourlyData 
-                    },
-                    week: { 
-                        totalActive: formatTime(weekTotal), 
-                        avgLight: formatTime(Math.round(weekTotal / 7)), 
-                        loadShedding: "00h 00m", 
-                        // Reverse the array so the oldest day is on the left side of the chart
-                        dailyGraph: newMetrics.dailyData.slice(0, 7).reverse() 
-                    },
-                    month: { 
-                        totalActive: formatTime(monthTotal), 
-                        avgLight: formatTime(Math.round(monthTotal / 30)), 
-                        loadShedding: "00h 00m", 
-                        // Reverse the array so the oldest day is on the left side of the chart
-                        dailyGraph: newMetrics.dailyData.reverse()
-                    }
-                };
-            }
+            // 2. Sum up totals
+            const weekTotal = newMetrics.dailyData.slice(0, 6).reduce((a, b) => a + b, 0) + todayTotal;
+            const monthTotal = newMetrics.dailyData.slice(0, 29).reduce((a, b) => a + b, 0) + todayTotal;
+
+            // 3. Autonomous Load Shedding
+            // Fallback to 0 if the ESP32 hasn't pushed these variables yet
+            const lightOutageMins = newMetrics.lightLoadSheddingToday || 0;
+            const totalOutageMins = newMetrics.totalLoadSheddingToday || 0;
+
+            this.devices[hwid].analyticsData = {
+                today: { 
+                    totalActive: formatTime(todayTotal), 
+                    loadShedding: formatTime(lightOutageMins), // Disrupted Light Schedule (Main UI)
+                    totalBlackout: formatTime(totalOutageMins), // Total House Outage (For the clickable Modal)
+                    hourlyGraph: newMetrics.hourlyData 
+                },
+                week: { 
+                    totalActive: formatTime(weekTotal), 
+                    avgLight: formatTime(Math.round(weekTotal / weekDivisor)), // Flawless mathematical average
+                    loadShedding: "00h 00m", // Placeholders for historical outages (future update)
+                    dailyGraph: newMetrics.dailyData.slice(0, 7).reverse() 
+                },
+                month: { 
+                    totalActive: formatTime(monthTotal), 
+                    avgLight: formatTime(Math.round(monthTotal / monthDivisor)), 
+                    loadShedding: "00h 00m", 
+                    dailyGraph: newMetrics.dailyData.reverse()
+                }
+            };
         }
         
         if (newCapabilities) {
