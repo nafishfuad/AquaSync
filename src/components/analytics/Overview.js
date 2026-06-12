@@ -25,7 +25,7 @@ export function renderOverview(container, device) {
         return formatTime(`${formattedH}:${min}`);
     };
 
-    // 🔥 PRECISE AQUA FISH TYPOGRAPHY: Whitespace-nowrap prevents stacking on mobile
+    // 🔥 PRECISE TYPOGRAPHY: Whitespace-nowrap prevents stacking on mobile, reduced to text-2xl
     const styleTimeStr = (str, colorClass = "text-white") => {
         const hmMatch = str.match(/(\d{2})h (\d{2})m/);
         if (hmMatch) return `<div class="whitespace-nowrap"><span class="text-2xl font-bold ${colorClass} tracking-tight">${hmMatch[1]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">h</span><span class="text-2xl font-bold ${colorClass} tracking-tight">${hmMatch[2]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">m</span></div>`;
@@ -40,11 +40,12 @@ export function renderOverview(container, device) {
     const statusGrid = clone.querySelector(".tpl-status-grid");
     let statuses = [];
 
+    // 🔥 AMBER LIGHT FIX: Light turns warm Amber when ON, Grey when OFF
     statuses.push(`
         <div class="text-left">
             <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Light Status</p>
-            <p class="text-2xl font-bold ${m.isLightOn ? 'text-green-400' : 'text-gray-500'} tracking-tight whitespace-nowrap">
-                ${m.isLightOn ? `ON <span class="text-sm text-green-400/50 font-bold ml-0.5">(${m.currentBrightness}%)</span>` : 'OFF'}
+            <p class="text-2xl font-bold ${m.isLightOn ? 'text-amber-400' : 'text-gray-500'} tracking-tight whitespace-nowrap">
+                ${m.isLightOn ? `ON <span class="text-sm text-amber-400/50 font-bold ml-0.5">(${m.currentBrightness}%)</span>` : 'OFF'}
             </p>
         </div>
     `);
@@ -70,12 +71,17 @@ export function renderOverview(container, device) {
     statusGrid.className = `grid grid-cols-${statuses.length} gap-4 pb-6 border-b border-gray-800/40`;
     statusGrid.innerHTML = statuses.join('');
 
-    // --- 2. Clean Row Layout ---
+    // --- 2. Clean Row Layout (With Borders!) ---
     clone.querySelector(".tpl-sunrise-val").innerHTML = `<span class="text-lg font-bold text-gray-200">${formatTime(m.startTime)}</span>`;
     clone.querySelector(".tpl-sunset-val").innerHTML = `<span class="text-lg font-bold text-gray-200">${calcSunset(m.startTime, m.photoperiod)}</span>`;
     
     clone.querySelector(".tpl-photo-val").innerHTML = styleTimeStr(`${String(m.photoperiod).padStart(2, '0')}h 00m`, "text-white");
     clone.querySelector(".tpl-recovery-val").innerHTML = styleTimeStr(`${m.recoveryMins}m`, "text-red-400");
+
+    // Inject the subtle grey top borders for the Photoperiod row
+    clone.querySelector(".tpl-photo-val").parentElement.classList.add("pt-5", "border-t", "border-gray-800/40");
+    clone.querySelector(".tpl-recovery-val").parentElement.classList.add("pt-5", "border-t", "border-gray-800/40");
+
 
     // --- 3. The Load Shedding Warning ---
     const loadSheddingText = device.analyticsData?.today?.loadShedding || "00h 00m";
@@ -91,7 +97,7 @@ export function renderOverview(container, device) {
                             Power Outage Detected
                         </p>
                         <div class="text-[12px] text-gray-300 font-medium flex items-center">
-                            Disrupted Light: <span class="ml-1 text-red-400 font-bold tracking-wider">${loadSheddingText}</span>
+                            Disrupted Light: <span class="ml-1">${styleTimeStr(loadSheddingText, "text-red-400")}</span>
                         </div>
                     </div>
                     <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
@@ -108,18 +114,18 @@ export function renderOverview(container, device) {
         });
     }
 
-    // --- 4. Dynamic Additional Rows ---
+    // --- 4. Dynamic Additional Rows (With Borders!) ---
     const dynamicRows = clone.querySelector(".tpl-dynamic-rows");
     let rowsHTML = "";
 
     if (cap.hasCO2 && m.isCO2ScheduleSeparate) {
         rowsHTML += `
-            <div class="grid grid-cols-2 gap-4 mt-6">
-                <div>
+            <div class="grid grid-cols-2 gap-4 mt-5">
+                <div class="pt-5 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">CO2 Starts</p>
                     <span class="text-lg font-bold text-gray-200">${formatTime(m.co2OnTime)}</span>
                 </div>
-                <div class="text-right">
+                <div class="text-right pt-5 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">CO2 Ends</p>
                     <span class="text-lg font-bold text-gray-200">${formatTime(m.co2OffTime)}</span>
                 </div>
@@ -129,12 +135,12 @@ export function renderOverview(container, device) {
 
     if (cap.hasFan && m.isFanEnabled) {
         rowsHTML += `
-            <div class="grid grid-cols-2 gap-4 mt-6">
-                <div>
+            <div class="grid grid-cols-2 gap-4 mt-5">
+                <div class="pt-5 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Fan Starts</p>
                     <span class="text-lg font-bold text-gray-200">${formatTime(m.fanOnTime)}</span>
                 </div>
-                <div class="text-right">
+                <div class="text-right pt-5 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Fan Ends</p>
                     <span class="text-lg font-bold text-gray-200">${formatTime(m.fanOffTime)}</span>
                 </div>

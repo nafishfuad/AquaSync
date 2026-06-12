@@ -13,7 +13,7 @@ export function renderCharts(container, analyticsData) {
     Chart.defaults.font.family = "sans-serif";
     Chart.defaults.plugins.legend.display = false;
 
-    // 🔥 PRECISE AQUA FISH TYPOGRAPHY: Prevents stacking inside the 3-column grid
+    // 🔥 PRECISE TYPOGRAPHY: Shrunk to text-2xl and uses whitespace-nowrap
     const styleTimeStr = (str, colorClass="text-white") => {
         const match = str.match(/(\d{2})h (\d{2})m/);
         if (match) return `<div class="whitespace-nowrap"><span class="text-2xl font-bold ${colorClass} tracking-tight">${match[1]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">h</span><span class="text-2xl font-bold ${colorClass} tracking-tight">${match[2]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">m</span></div>`;
@@ -84,7 +84,6 @@ export function renderCharts(container, analyticsData) {
         const now = new Date();
         const nowMins = (now.getHours() * 60) + now.getMinutes();
         
-        // Midnight Crossover Math
         let relativeNowMins = nowMins;
         if (relativeNowMins < graphStartMins) {
             relativeNowMins += 1440; 
@@ -92,14 +91,15 @@ export function renderCharts(container, analyticsData) {
 
         const hourlyGraph = analyticsData.today.hourlyGraph || Array(24).fill(0);
         const awakeHistory = analyticsData.today.awakeData || Array(24).fill(1);
+        const hasLoadShedding = analyticsData.today.loadShedding !== "00h 00m";
 
-        // Generate exactly ONE elegant line
+        // 🔥 BULLETPROOF FIX: Generate exactly ONE continuous line
         for (let t = graphStartMins; t <= graphEndMins; t += 5) {
             let normalizedT = (t + 1440) % 1440; 
             let h = Math.floor(normalizedT / 60);
             let min = Math.floor(normalizedT % 60);
             
-            // Generate clean X-Axis labels exactly on the hour (e.g., 3PM, 4PM)
+            // X-Axis labels: Show text exactly on the hour
             if (min === 0) {
                 let ampm = h >= 12 ? 'PM' : 'AM';
                 let dispH = h % 12 || 12;
@@ -113,30 +113,34 @@ export function renderCharts(container, analyticsData) {
                 : (normalizedT >= startMins && normalizedT <= endMins);
             
             let isFuture = t > relativeNowMins;
-
             let isActuallyOn = false;
             let isBlackout = false;
 
             if (!isFuture) {
-                if (h === now.getHours()) {
+                if (h === now.getHours() && t >= (nowMins - (nowMins % 5))) {
                     isActuallyOn = device.metrics.isLightOn;
                 } else {
-                    isActuallyOn = hourlyGraph[h] > 0;
+                    // Force the chart to respect the schedule bounds to prevent "broken" overhangs
+                    if (isSched) isActuallyOn = hourlyGraph[h] > 0;
                 }
-                if (isSched && !isActuallyOn && awakeHistory[h] === 0) {
+
+                // If scheduled to be ON, but it is OFF, AND power dropped -> Paint it RED
+                if (isSched && !isActuallyOn && hasLoadShedding && awakeHistory[h] === 0) {
                     isBlackout = true;
                 }
             }
 
-            // Determine the Y-position for this slice (1 if it's supposed to be on OR is actually on)
+            // Determine the Y-position for this slice
             let y = (isSched || isActuallyOn) ? 1 : 0;
             chartData.push(y);
 
             // Determine the dynamic color for this exact 5-minute slice
-            let sliceColor = '#374151'; // Default Grey
-            if (!isFuture) {
-                if (isActuallyOn) sliceColor = '#00f2fe'; // Cyan Active
+            let sliceColor = '#374151'; // Default Grey for OFF / Future
+            if (y === 1) {
+                if (isFuture) sliceColor = '#374151'; 
+                else if (isActuallyOn) sliceColor = '#fbbf24'; // Amber Active (Matches text!)
                 else if (isBlackout) sliceColor = '#ef4444'; // Red Blackout
+                else sliceColor = '#374151'; // Manually off -> Grey
             }
             segmentColors.push(sliceColor);
         }
@@ -157,12 +161,19 @@ export function renderCharts(container, analyticsData) {
                         label: 'Activity',
                         data: chartData,
                         borderWidth: 2,
-                        stepped: true, // Perfect 90-degree stair steps
-                        fill: false,   // No gradient fill underneath to match Aqua Fish
+                        stepped: 'middle', 
+                        fill: false,   
                         pointRadius: 0,
-                        // 🔥 THE MAGIC COLOR ENGINE: Paints the single line flawlessly based on history
+                        // 🔥 THE MAGIC COLOR ENGINE: Maps the colors directly to the single continuous line!
                         segment: {
-                            borderColor: (ctx) => segmentColors[ctx.p0DataIndex] || '#374151'
+                            borderColor: (ctx) => {
+                                // If it's a bottom flat line, paint it faint grey
+                                if (ctx.p0.parsed.y === 0 && ctx.p1.parsed.y === 0) return '#1f2937'; 
+                                // If it's a top flat line, paint it the assigned color (Amber/Red/Grey)
+                                if (ctx.p0.parsed.y === 1 && ctx.p1.parsed.y === 1) return segmentColors[ctx.p0DataIndex];
+                                // If it's a vertical rising/falling edge, match the color of the active point
+                                return segmentColors[ctx.p0.parsed.y === 1 ? ctx.p0DataIndex : ctx.p1DataIndex] || '#fbbf24';
+                            }
                         }
                     }
                 ]
