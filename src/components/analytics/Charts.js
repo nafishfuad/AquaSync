@@ -6,29 +6,26 @@ export function renderCharts(container, analyticsData) {
     const template = document.getElementById("tpl-analytics-chart-card");
     if (!template) return;
 
-    // Grab active device context so we can read the exact schedule!
     const device = DeviceStore.getActiveDevice();
     const m = device ? device.metrics : null;
 
-    // Apply global Chart.js aesthetic defaults
     Chart.defaults.color = "#6b7280";
     Chart.defaults.font.family = "sans-serif";
     Chart.defaults.plugins.legend.display = false;
 
-    // 🔥 THE TYPOGRAPHY ENGINE (For the Chart Headers)
-    const styleTimeStr = (str, colorClass="text-gray-200") => {
+    // Typography formatter
+    const styleTimeStr = (str, colorClass="text-gray-100") => {
         const match = str.match(/(\d{2})h (\d{2})m/);
         if (match) return `<span class="text-2xl font-bold ${colorClass} tracking-tight">${match[1]}</span><span class="text-[10px] text-gray-500 font-bold mx-0.5">h</span> <span class="text-2xl font-bold ${colorClass} tracking-tight">${match[2]}</span><span class="text-[10px] text-gray-500 font-bold mx-0.5">m</span>`;
         return `<span class="text-2xl font-bold ${colorClass}">${str}</span>`;
     };
 
-    // Factory function to spawn chart layouts safely
     const createChartCard = (title, statsArray, chartConfigBuilder) => {
         const clone = template.content.cloneNode(true);
         clone.querySelector(".tpl-chart-title").innerText = title;
         
         const statsGrid = clone.querySelector(".tpl-stats-grid");
-        statsGrid.className = `grid grid-cols-${statsArray.length} gap-4 mb-4 pb-6 border-b border-gray-800/40`;
+        statsGrid.className = `grid grid-cols-${statsArray.length} gap-4 mb-2 pb-2 text-xs`;
         
         let statsHTML = "";
         statsArray.forEach((stat, index) => {
@@ -38,7 +35,6 @@ export function renderCharts(container, analyticsData) {
                 if (index === 1) alignClass = "text-center";
                 if (index === 2) alignClass = "text-right";
             }
-
             statsHTML += `
                 <div class="${alignClass}">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-2 font-bold">${stat.label}</p>
@@ -56,7 +52,6 @@ export function renderCharts(container, analyticsData) {
         new Chart(canvas, finalConfig);
     };
 
-    // Helper to generate the exact glowing gradients
     const getGradient = (ctx, r, g, b) => {
         const gradient = ctx.createLinearGradient(0, 0, 0, 150);
         gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.35)`); 
@@ -66,40 +61,57 @@ export function renderCharts(container, analyticsData) {
 
 
     // ==========================================
-    // 1. TODAY'S DYNAMIC HOURLY TIMELINE
+    // 1. TODAY'S HIGH-RESOLUTION TIMELINE
     // ==========================================
+    let labels = [];
     let scheduleData = [];
     let actualData = [];
-    let todayLabels = [];
 
     if (m) {
-        const parseTime = (str) => {
+        const parseMins = (str) => {
             let [h, min] = str.split(':');
-            return parseInt(h) + (parseInt(min) / 60);
+            return (parseInt(h) * 60) + parseInt(min);
         };
-        const startH = parseTime(m.startTime);
-        const endH = startH + m.photoperiod;
-        const currentHour = new Date().getHours() + (new Date().getMinutes() / 60);
+        
+        const startMins = parseMins(m.startTime);
+        const photoMins = m.photoperiod * 60;
+        const endMins = startMins + photoMins;
+        
+        const paddingMins = photoMins * (15 / 70); 
+        const graphStart = startMins - paddingMins;
+        const graphEnd = endMins + paddingMins;
 
-        for (let i = 0; i <= 24; i++) {
-            // X-Axis Labels (e.g., 2PM, 4PM)
-            let ampm = i >= 12 && i < 24 ? 'PM' : 'AM';
-            let h = i % 12 || 12;
-            todayLabels.push(`${h}${ampm}`);
+        const now = new Date();
+        const currentMinsOfDay = (now.getHours() * 60) + now.getMinutes();
 
-            // The Grey Schedule Line (Handles midnight rollover)
-            let isScheduled = false;
-            if (endH <= 24) isScheduled = (i >= startH && i < endH);
-            else isScheduled = (i >= startH || i < (endH - 24));
-            scheduleData.push(isScheduled ? 1 : 0);
-
-            // The Actual Progress Line
-            if (i <= currentHour) {
-                // If ESP32 recorded active minutes in this hour, it ran!
-                let isActive = analyticsData.today.hourlyGraph[i] > 0;
-                actualData.push(isActive ? 1 : 0);
+        for (let t = graphStart; t <= graphEnd; t += 5) {
+            let normalizedT = (t + 1440) % 1440; 
+            let h = Math.floor(normalizedT / 60);
+            let min = Math.floor(normalizedT % 60);
+            
+            if (min === 0 || t === graphStart || t === graphEnd) {
+                let ampm = h >= 12 ? 'PM' : 'AM';
+                let dispH = h % 12 || 12;
+                labels.push(`${dispH}${ampm}`);
             } else {
-                actualData.push(null); // Don't draw the future
+                labels.push('');
+            }
+            
+            let isSched = (endMins > 1440) 
+                ? (normalizedT >= startMins || normalizedT <= (endMins % 1440))
+                : (normalizedT >= startMins && normalizedT <= endMins);
+            scheduleData.push(isSched ? 1 : 0);
+            
+            if (t > currentMinsOfDay && !(endMins > 1440 && t < graphEnd)) {
+                actualData.push(null); 
+            } else {
+                let isActuallyOn = false;
+                if (h === now.getHours()) {
+                    isActuallyOn = device.metrics.isLightOn;
+                } else {
+                    isActuallyOn = analyticsData.today.hourlyGraph[h] > 0;
+                }
+                actualData.push(isActuallyOn ? 1 : 0);
             }
         }
     }
@@ -113,14 +125,14 @@ export function renderCharts(container, analyticsData) {
         (ctx) => ({
             type: 'line',
             data: {
-                labels: todayLabels,
+                labels: labels,
                 datasets: [
                     {
                         label: 'Schedule Target',
                         data: scheduleData,
-                        borderColor: '#374151', // Grey-700
+                        borderColor: '#2d3748', 
                         borderWidth: 2,
-                        stepped: 'middle',
+                        stepped: true,
                         fill: false,
                         pointRadius: 0
                     },
@@ -128,17 +140,22 @@ export function renderCharts(container, analyticsData) {
                         label: 'Actual Progress',
                         data: actualData,
                         borderWidth: 3,
-                        stepped: 'middle',
+                        stepped: true,
                         fill: true,
-                        backgroundColor: getGradient(ctx, 0, 242, 254), // Aqua Gradient
+                        backgroundColor: getGradient(ctx, 0, 242, 254),
                         pointRadius: 0,
                         segment: {
                             borderColor: (ctx) => {
                                 const i = ctx.p0DataIndex;
-                                // 🔥 THE LOAD SHEDDING HIGHLIGHT:
-                                // If it was supposed to be ON, but the actual data is OFF -> Turn Red!
-                                if (scheduleData[i] === 1 && actualData[i] === 0) return '#ef4444'; // Red
-                                return '#00f2fe'; // Cyan
+                                if (scheduleData[i] === 1 && actualData[i] === 0) {
+                                    let normalizedT = (m ? (parseMins(m.startTime) - (m.photoperiod * 60 * 15 / 70)) : 0) + (i * 5);
+                                    normalizedT = (normalizedT + 1440) % 1440;
+                                    let h = Math.floor(normalizedT / 60);
+                                    if (analyticsData.today.awakeData[h] === 0) return '#ef4444'; 
+                                    return '#2d3748'; 
+                                }
+                                if (actualData[i] === 1) return '#00f2fe'; 
+                                return 'transparent'; 
                             }
                         }
                     }
@@ -148,14 +165,13 @@ export function renderCharts(container, analyticsData) {
                 responsive: true, maintainAspectRatio: false,
                 scales: {
                     y: { 
-                        min: -0.1, max: 1.1, 
-                        ticks: { stepSize: 1, callback: v => v === 1 ? 'ON' : v === 0 ? 'OFF' : '' }, 
+                        min: -0.1, max: 1.2, 
+                        ticks: { stepSize: 1, callback: v => v === 1 ? 'ON' : '' }, 
                         grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false } 
                     },
                     x: { 
                         grid: { display: false }, 
-                        // To make it look clean like Aqua Fish, only show every 2 hours
-                        ticks: { maxTicksLimit: 12, maxRotation: 45, minRotation: 45, callback: function(val, index) { return index % 2 === 0 ? this.getLabelForValue(val) : ''; } } 
+                        ticks: { maxTicksLimit: 7, maxRotation: 45, minRotation: 45, callback: function(val, index) { return labels[index]; } } 
                     }
                 }
             }
@@ -189,7 +205,7 @@ export function renderCharts(container, analyticsData) {
                     data: analyticsData.week.dailyGraph,
                     borderColor: '#00f2fe',
                     backgroundColor: getGradient(ctx, 0, 242, 254),
-                    borderWidth: 3,
+                    borderWidth: 2,
                     fill: true,
                     tension: 0.4, 
                     pointBackgroundColor: '#121212', 
@@ -202,7 +218,8 @@ export function renderCharts(container, analyticsData) {
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { 
-                    y: { beginAtZero: true, max: 12, grid: { color: 'rgba(255,255,255,0.1)', drawBorder: false } }, 
+                    // 🔥 THE FIX: 'suggestedMax' replaces 'max' to allow dynamic scaling above 12h
+                    y: { beginAtZero: true, suggestedMax: 12, grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false } }, 
                     x: { grid: { display: false } } 
                 }
             }
@@ -228,7 +245,7 @@ export function renderCharts(container, analyticsData) {
                     data: analyticsData.month.dailyGraph,
                     borderColor: '#a855f7', 
                     backgroundColor: getGradient(ctx, 168, 85, 247),
-                    borderWidth: 3,
+                    borderWidth: 2,
                     fill: true,
                     tension: 0.4,
                     pointRadius: 0 
@@ -237,7 +254,8 @@ export function renderCharts(container, analyticsData) {
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { 
-                    y: { beginAtZero: true, max: 12, grid: { color: 'rgba(255,255,255,0.1)', drawBorder: false } }, 
+                    // 🔥 THE FIX: 'suggestedMax' replaces 'max' to allow dynamic scaling
+                    y: { beginAtZero: true, suggestedMax: 12, grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false } }, 
                     x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } } 
                 }
             }

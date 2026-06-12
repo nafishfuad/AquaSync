@@ -139,41 +139,44 @@ export const DeviceStore = {
             const todayTotal = newMetrics.hourlyData.reduce((a, b) => a + b, 0);
             
             // 1. Dynamic Active Days Math
-            // Instead of blindly dividing by 7 or 30, count how many historical days actually have data
             const activeHistoryWeek = newMetrics.dailyData.slice(0, 6).filter(mins => mins > 0).length;
             const activeHistoryMonth = newMetrics.dailyData.slice(0, 29).filter(mins => mins > 0).length;
 
-            // Today always counts as 1 active day. Add the historical active days.
-            const weekDivisor = Math.max(1, activeHistoryWeek + 1);
-            const monthDivisor = Math.max(1, activeHistoryMonth + 1);
+            // Don't average in "today" if today has 0 minutes active yet, unless it's the only day
+            const weekDivisor = Math.max(1, activeHistoryWeek + (todayTotal > 0 ? 1 : 0));
+            const monthDivisor = Math.max(1, activeHistoryMonth + (todayTotal > 0 ? 1 : 0));
 
             // 2. Sum up totals
             const weekTotal = newMetrics.dailyData.slice(0, 6).reduce((a, b) => a + b, 0) + todayTotal;
             const monthTotal = newMetrics.dailyData.slice(0, 29).reduce((a, b) => a + b, 0) + todayTotal;
 
             // 3. Autonomous Load Shedding
-            // Fallback to 0 if the ESP32 hasn't pushed these variables yet
             const lightOutageMins = newMetrics.lightLoadSheddingToday || 0;
             const totalOutageMins = newMetrics.totalLoadSheddingToday || 0;
+
+            // 🔥 THE GRAPH FIX: Stitch Today's live minutes onto the end of the history array!
+            // We map it to (m / 60) so Chart.js plots hours (e.g., 4.5) instead of massive raw minutes.
+            const weekGraphData = [...newMetrics.dailyData.slice(0, 6).reverse(), todayTotal].map(m => Number((m / 60).toFixed(2)));
+            const monthGraphData = [...newMetrics.dailyData.slice(0, 29).reverse(), todayTotal].map(m => Number((m / 60).toFixed(2)));
 
             this.devices[hwid].analyticsData = {
                 today: { 
                     totalActive: formatTime(todayTotal), 
-                    loadShedding: formatTime(lightOutageMins), // Disrupted Light Schedule (Main UI)
-                    totalBlackout: formatTime(totalOutageMins), // Total House Outage (For the clickable Modal)
+                    loadShedding: formatTime(lightOutageMins), // Disrupted Light Schedule
+                    totalBlackout: formatTime(totalOutageMins), // Total House Outage
                     hourlyGraph: newMetrics.hourlyData 
                 },
                 week: { 
                     totalActive: formatTime(weekTotal), 
-                    avgLight: formatTime(Math.round(weekTotal / weekDivisor)), // Flawless mathematical average
-                    loadShedding: "00h 00m", // Placeholders for historical outages (future update)
-                    dailyGraph: newMetrics.dailyData.slice(0, 7).reverse() 
+                    avgLight: formatTime(Math.round(weekTotal / weekDivisor)), 
+                    loadShedding: formatTime(lightOutageMins), // Fallback: Show today's outage to prevent zeroing
+                    dailyGraph: weekGraphData 
                 },
                 month: { 
                     totalActive: formatTime(monthTotal), 
                     avgLight: formatTime(Math.round(monthTotal / monthDivisor)), 
-                    loadShedding: "00h 00m", 
-                    dailyGraph: newMetrics.dailyData.reverse()
+                    loadShedding: formatTime(lightOutageMins), // Fallback: Show today's outage to prevent zeroing
+                    dailyGraph: monthGraphData
                 }
             };
         }
