@@ -13,10 +13,11 @@ export function renderCharts(container, analyticsData) {
     Chart.defaults.font.family = "sans-serif";
     Chart.defaults.plugins.legend.display = false;
 
+    // 🔥 PRECISE AQUA FISH TYPOGRAPHY: Prevents stacking inside the 3-column grid
     const styleTimeStr = (str, colorClass="text-white") => {
         const match = str.match(/(\d{2})h (\d{2})m/);
-        if (match) return `<span class="text-3xl font-bold ${colorClass} tracking-tight">${match[1]}</span><span class="text-xs text-gray-500 font-bold mx-0.5">h</span> <span class="text-3xl font-bold ${colorClass} tracking-tight">${match[2]}</span><span class="text-xs text-gray-500 font-bold mx-0.5">m</span>`;
-        return `<span class="text-3xl font-bold ${colorClass}">${str}</span>`;
+        if (match) return `<div class="whitespace-nowrap"><span class="text-2xl font-bold ${colorClass} tracking-tight">${match[1]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">h</span><span class="text-2xl font-bold ${colorClass} tracking-tight">${match[2]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">m</span></div>`;
+        return `<div class="whitespace-nowrap text-2xl font-bold ${colorClass}">${str}</div>`;
     };
 
     const createChartCard = (title, statsArray, chartConfigBuilder) => {
@@ -24,14 +25,14 @@ export function renderCharts(container, analyticsData) {
         clone.querySelector(".tpl-chart-title").innerText = title;
         
         const statsGrid = clone.querySelector(".tpl-stats-grid");
-        statsGrid.className = `grid grid-cols-${statsArray.length} gap-4 mb-2 pb-2 text-xs`;
+        statsGrid.className = `grid grid-cols-${statsArray.length} gap-2 mb-2 pb-4 text-xs`;
         
         let statsHTML = "";
         statsArray.forEach((stat, index) => {
             let alignClass = "text-left";
             if (statsArray.length === 2 && index === 1) alignClass = "text-right";
             else if (statsArray.length === 3) {
-                if (index === 1) alignClass = "text-center";
+                if (index === 1) alignClass = "text-center border-x border-gray-800/60 px-2";
                 if (index === 2) alignClass = "text-right";
             }
             statsHTML += `
@@ -60,12 +61,11 @@ export function renderCharts(container, analyticsData) {
 
 
     // ==========================================
-    // 1. TODAY'S 100-SLICE DYNAMIC TIMELINE
+    // 1. TODAY'S UNIFIED SINGLE-LINE TIMELINE
     // ==========================================
     let labels = [];
-    let scheduleData = [];
-    let actualData = [];
-    let blackoutData = [];
+    let chartData = [];
+    let segmentColors = [];
 
     if (m && analyticsData && analyticsData.today) {
         const parseMins = (str) => {
@@ -77,27 +77,30 @@ export function renderCharts(container, analyticsData) {
         const photoMins = m.photoperiod * 60;
         const endMins = startMins + photoMins;
         
+        // Exact timeline framing: Strictly 2 hours before start, 2 hours after end (No % padding)
         const graphStartMins = startMins - 120; 
         const graphEndMins = endMins + 120; 
 
         const now = new Date();
         const nowMins = (now.getHours() * 60) + now.getMinutes();
         
+        // Midnight Crossover Math
         let relativeNowMins = nowMins;
-        if (endMins > 1440 && nowMins < (endMins % 1440 + 120)) {
+        if (relativeNowMins < graphStartMins) {
             relativeNowMins += 1440; 
         }
 
-        // CRASH PREVENTER: Guarantees awakeData exists even if localStorage is corrupt
         const hourlyGraph = analyticsData.today.hourlyGraph || Array(24).fill(0);
         const awakeHistory = analyticsData.today.awakeData || Array(24).fill(1);
 
+        // Generate exactly ONE elegant line
         for (let t = graphStartMins; t <= graphEndMins; t += 5) {
             let normalizedT = (t + 1440) % 1440; 
             let h = Math.floor(normalizedT / 60);
             let min = Math.floor(normalizedT % 60);
             
-            if (min === 0 && h % 2 === 0) {
+            // Generate clean X-Axis labels exactly on the hour (e.g., 3PM, 4PM)
+            if (min === 0) {
                 let ampm = h >= 12 ? 'PM' : 'AM';
                 let dispH = h % 12 || 12;
                 labels.push(`${dispH}${ampm}`);
@@ -108,28 +111,34 @@ export function renderCharts(container, analyticsData) {
             let isSched = (endMins > 1440) 
                 ? (normalizedT >= startMins || normalizedT <= (endMins % 1440))
                 : (normalizedT >= startMins && normalizedT <= endMins);
-            scheduleData.push(isSched ? 1 : 0);
             
-            if (t > relativeNowMins && !(endMins > 1440 && t < graphEndMins)) {
-                actualData.push(null); 
-                blackoutData.push(null);
-            } else {
-                let isActuallyOn = false;
-                let isBlackout = false;
+            let isFuture = t > relativeNowMins;
 
+            let isActuallyOn = false;
+            let isBlackout = false;
+
+            if (!isFuture) {
                 if (h === now.getHours()) {
                     isActuallyOn = device.metrics.isLightOn;
                 } else {
                     isActuallyOn = hourlyGraph[h] > 0;
                 }
-
                 if (isSched && !isActuallyOn && awakeHistory[h] === 0) {
                     isBlackout = true;
                 }
-
-                actualData.push(isActuallyOn ? 1 : 0);
-                blackoutData.push(isBlackout ? 1 : 0);
             }
+
+            // Determine the Y-position for this slice (1 if it's supposed to be on OR is actually on)
+            let y = (isSched || isActuallyOn) ? 1 : 0;
+            chartData.push(y);
+
+            // Determine the dynamic color for this exact 5-minute slice
+            let sliceColor = '#374151'; // Default Grey
+            if (!isFuture) {
+                if (isActuallyOn) sliceColor = '#00f2fe'; // Cyan Active
+                else if (isBlackout) sliceColor = '#ef4444'; // Red Blackout
+            }
+            segmentColors.push(sliceColor);
         }
     }
 
@@ -145,31 +154,16 @@ export function renderCharts(container, analyticsData) {
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Schedule Target',
-                        data: scheduleData,
+                        label: 'Activity',
+                        data: chartData,
                         borderWidth: 2,
-                        stepped: 'middle',
+                        stepped: true, // Perfect 90-degree stair steps
+                        fill: false,   // No gradient fill underneath to match Aqua Fish
                         pointRadius: 0,
-                        // Fixes the invisible bottom line clutter
-                        segment: { borderColor: (ctx) => (ctx.p0.parsed.y === 1 || ctx.p1.parsed.y === 1) ? '#374151' : 'transparent' }
-                    },
-                    {
-                        label: 'Actual Progress',
-                        data: actualData,
-                        borderWidth: 3,
-                        stepped: 'middle',
-                        pointRadius: 0,
-                        // 🔥 THE INVISIBLE LINE FIX: Colors the rising/falling edges so even a single 5-minute slice shows up instantly!
-                        segment: { borderColor: (ctx) => (ctx.p0.parsed.y === 1 || ctx.p1.parsed.y === 1) ? '#00f2fe' : 'transparent' }
-                    },
-                    {
-                        label: 'Load Shedding',
-                        data: blackoutData,
-                        borderWidth: 3,
-                        stepped: 'middle',
-                        pointRadius: 0,
-                        // Renders Red outages beautifully
-                        segment: { borderColor: (ctx) => (ctx.p0.parsed.y === 1 || ctx.p1.parsed.y === 1) ? '#ef4444' : 'transparent' }
+                        // 🔥 THE MAGIC COLOR ENGINE: Paints the single line flawlessly based on history
+                        segment: {
+                            borderColor: (ctx) => segmentColors[ctx.p0DataIndex] || '#374151'
+                        }
                     }
                 ]
             },
@@ -177,8 +171,8 @@ export function renderCharts(container, analyticsData) {
                 responsive: true, maintainAspectRatio: false,
                 scales: {
                     y: { 
-                        min: -0.1, max: 1.2, 
-                        ticks: { stepSize: 1, callback: v => v === 1 ? 'ON' : v === 0 ? 'OFF' : '' }, 
+                        min: -0.1, max: 1.1, 
+                        ticks: { stepSize: 1, callback: v => v === 1 ? 'ON' : (v === 0 ? 'OFF' : '') }, 
                         grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false } 
                     },
                     x: { 
@@ -192,7 +186,7 @@ export function renderCharts(container, analyticsData) {
 
 
     // ==========================================
-    // 2. 7-DAY GRAPH 
+    // 2. 7-DAY GRAPH (Cyan Area & Hollow Dots)
     // ==========================================
     const getLast7DaysLabels = () => {
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -239,7 +233,7 @@ export function renderCharts(container, analyticsData) {
 
 
     // ==========================================
-    // 3. 30-DAY GRAPH 
+    // 3. 30-DAY GRAPH (Purple Area, No Dots)
     // ==========================================
     createChartCard(
         "30-Day Overview", 
