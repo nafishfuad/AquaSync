@@ -8,7 +8,6 @@ export function initTopNav() {
     const slot = document.getElementById("slot-top-nav");
     if (!slot) return;
 
-    // 🔥 THEME INITIALIZATION: Check memory and apply instantly
     const savedTheme = localStorage.getItem("aquasync_theme") || "dark";
     if (savedTheme === "light") {
         document.body.classList.add("light-theme");
@@ -19,7 +18,6 @@ export function initTopNav() {
     const activeDevice = DeviceStore.getActiveDevice();
     const allDevices = DeviceStore.devices;
 
-    // If no devices, don't render the nav
     if (!activeDevice) {
         slot.innerHTML = "";
         return;
@@ -50,7 +48,7 @@ export function initTopNav() {
             </div>
         </div>
 
-        <div class="pointer-events-auto w-full max-w-[1200px] bg-cardbg/90 backdrop-blur-xl border border-gray-700/50 shadow-[0_10px_30px_rgba(0,0,0,0.5)] rounded-2xl relative mt-3 transition-colors duration-300">
+        <div class="pointer-events-auto w-full max-w-[1200px] bg-cardbg/90 backdrop-blur-xl border border-gray-700/50 shadow-md rounded-2xl relative mt-3 transition-colors duration-300">
             
             <div id="device-dropdown-trigger" class="px-4 py-3 flex justify-between items-center cursor-pointer active:bg-gray-800/50 rounded-2xl transition-colors">
                 <div class="flex items-center space-x-3">
@@ -92,30 +90,23 @@ export function initTopNav() {
         </div>
     `;
 
-    // --- EVENT LISTENERS ---
-
-    // 🔥 THEME TOGGLE LOGIC
     document.getElementById("btn-theme-toggle").onclick = () => {
         const isLight = document.body.classList.toggle("light-theme");
         localStorage.setItem("aquasync_theme", isLight ? "light" : "dark");
         
-        // Swap Icons smoothly
         document.getElementById("icon-sun").classList.toggle("hidden", isLight);
         document.getElementById("icon-sun").classList.toggle("block", !isLight);
         
         document.getElementById("icon-moon").classList.toggle("hidden", !isLight);
         document.getElementById("icon-moon").classList.toggle("block", isLight);
 
-        // Force UI Redraw so Chart.js canvas colors update
         if (window.AquaSync && window.AquaSync.renderActiveUI) {
             window.AquaSync.renderActiveUI();
         }
     };
 
-    // Info Modal
     document.getElementById("btn-nav-info").onclick = renderAboutModal;
 
-    // Dropdown Toggle Logic
     const trigger = document.getElementById("device-dropdown-trigger");
     const menu = document.getElementById("device-dropdown-menu");
     const arrow = document.getElementById("dropdown-arrow");
@@ -126,23 +117,20 @@ export function initTopNav() {
         arrow.style.transform = menu.classList.contains("hidden") ? "rotate(0deg)" : "rotate(180deg)";
     };
 
-    // Add New Device
     document.getElementById("btn-add-new-device").onclick = () => {
         menu.classList.add("hidden");
         menu.classList.remove("flex");
         renderPairingWizard(() => window.location.reload());
     };
 
-    // Switch Device
     document.querySelectorAll(".btn-switch-device").forEach(btn => {
         btn.onclick = (e) => {
             const targetHwid = e.target.getAttribute("data-hwid");
             DeviceStore.setActiveDevice(targetHwid);
-            window.location.reload(); // Cleanest way to refresh all components to new device state
+            window.location.reload(); 
         };
     });
 
-    // Remove Device
     document.querySelectorAll(".btn-remove-device").forEach(btn => {
         btn.onclick = (e) => {
             if (confirm("Are you sure you want to remove this device from the app?")) {

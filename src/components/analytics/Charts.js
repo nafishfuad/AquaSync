@@ -9,10 +9,9 @@ export function renderCharts(container, analyticsData) {
     const device = DeviceStore.getActiveDevice();
     const m = device ? device.metrics : null;
 
-    // 🔥 THEME DETECTION: Check if Light Mode is active to invert Chart.js colors
     const isLightMode = document.body.classList.contains("light-theme");
     const gridColor = isLightMode ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.05)';
-    Chart.defaults.color = isLightMode ? "#64748b" : "#6b7280"; // Slate-500 vs Gray-500
+    Chart.defaults.color = isLightMode ? "#64748b" : "#6b7280"; 
     Chart.defaults.font.family = "sans-serif";
     Chart.defaults.plugins.legend.display = false;
 
@@ -116,10 +115,14 @@ export function renderCharts(container, analyticsData) {
             let isBlackout = false;
 
             if (!isFuture) {
-                if (h === now.getHours() && t >= (nowMins - (nowMins % 5))) {
-                    isActuallyOn = device.metrics.isLightOn;
-                } else {
-                    if (isSched) isActuallyOn = hourlyGraph[h] > 0;
+                if (isSched) {
+                    isActuallyOn = hourlyGraph[h] > 0;
+                    
+                    // 🔥 LIVE OVERRIDE: If the light is physically ON right now, force the chart 
+                    // to paint Cyan up to the current minute, overriding any delays in the ESP32 array sync!
+                    if (h === now.getHours() && device.metrics.isLightOn) {
+                        isActuallyOn = true;
+                    }
                 }
 
                 if (isSched && !isActuallyOn && hasLoadShedding && awakeHistory[h] === 0) {
@@ -133,7 +136,7 @@ export function renderCharts(container, analyticsData) {
             let sliceColor = isLightMode ? '#cbd5e1' : '#374151'; // Lighter grey track for light mode
             if (y === 1) {
                 if (isFuture) sliceColor = isLightMode ? '#cbd5e1' : '#374151'; 
-                else if (isActuallyOn) sliceColor = '#00f2fe'; 
+                else if (isActuallyOn) sliceColor = '#00f2fe'; // Aqua Blue Active Time
                 else if (isBlackout) sliceColor = '#ef4444'; 
                 else sliceColor = isLightMode ? '#cbd5e1' : '#374151'; 
             }

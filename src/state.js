@@ -15,9 +15,6 @@ export const DeviceStore = {
             const storedData = localStorage.getItem("aquasync_ecosystem");
             if (storedData) {
                 this.devices = JSON.parse(storedData);
-
-                // 🔥 PRODUCTION FIX: Soft Migration instead of Hard Wipe.
-                // If we ever add new features, this patches existing devices without deleting them.
                 for (let hwid in this.devices) {
                     let dev = this.devices[hwid];
                     if (dev.analyticsData && dev.analyticsData.today) {
@@ -28,10 +25,8 @@ export const DeviceStore = {
                 }
             }
             this.activeDeviceId = localStorage.getItem("aquasync_active_hwid");
-
         } catch (error) {
             console.error("[STATE] Memory validation failed. Corrupted JSON.", error);
-            // Only remove app-specific keys, never use localStorage.clear() in production!
             localStorage.removeItem("aquasync_ecosystem");
             localStorage.removeItem("aquasync_active_hwid");
             this.devices = {};
@@ -100,7 +95,13 @@ export const DeviceStore = {
         if (newMetrics.deviceName) this.devices[hwid].name = newMetrics.deviceName;
 
         if (newMetrics.hourlyData && newMetrics.dailyData && newMetrics.awakeData) {
-            const todayTotal = newMetrics.hourlyData.reduce((a, b) => a + b, 0);
+            let todayTotal = newMetrics.hourlyData.reduce((a, b) => a + b, 0);
+            
+            // 🔥 LIVE SYNTHETIC MINUTES: If the light is ON but the ESP32 hasn't synced the array yet, 
+            // inject the live minutes of the current hour so the UI reacts instantly!
+            if (newMetrics.isLightOn && todayTotal === 0) {
+                todayTotal = new Date().getMinutes(); 
+            }
             
             const activeHistoryWeek = newMetrics.dailyData.slice(0, 6).filter(mins => mins > 0).length;
             const activeHistoryMonth = newMetrics.dailyData.slice(0, 29).filter(mins => mins > 0).length;

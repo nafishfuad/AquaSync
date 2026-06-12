@@ -25,7 +25,6 @@ export function renderOverview(container, device) {
         return formatTime(`${formattedH}:${min}`);
     };
 
-    // 🔥 PRECISE TYPOGRAPHY: Whitespace-nowrap prevents stacking on mobile, reduced to text-2xl
     const styleTimeStr = (str, colorClass = "text-white") => {
         const hmMatch = str.match(/(\d{2})h (\d{2})m/);
         if (hmMatch) return `<div class="whitespace-nowrap"><span class="text-2xl font-bold ${colorClass} tracking-tight">${hmMatch[1]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">h</span><span class="text-2xl font-bold ${colorClass} tracking-tight">${hmMatch[2]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">m</span></div>`;
@@ -40,7 +39,6 @@ export function renderOverview(container, device) {
     const statusGrid = clone.querySelector(".tpl-status-grid");
     let statuses = [];
 
-    // 🔥 AMBER LIGHT FIX: Light turns warm Amber when ON, Grey when OFF
     statuses.push(`
         <div class="text-left">
             <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Light Status</p>
@@ -68,20 +66,24 @@ export function renderOverview(container, device) {
         `);
     }
 
-    statusGrid.className = `grid grid-cols-${statuses.length} gap-4 pb-6 border-b border-gray-800/40`;
+    statusGrid.className = `grid grid-cols-${statuses.length} gap-4 pb-4 border-b border-gray-800/40`;
     statusGrid.innerHTML = statuses.join('');
 
-    // --- 2. Clean Row Layout (With Borders!) ---
+    // --- 2. Clean Row Layout (COMPACTED) ---
+    // Override the generic container grid gap
+    const midGrid = clone.querySelector(".tpl-sunrise-val").parentElement.parentElement;
+    midGrid.classList.remove("gap-y-6", "pt-6");
+    midGrid.classList.add("gap-y-4", "pt-4");
+
     clone.querySelector(".tpl-sunrise-val").innerHTML = `<span class="text-lg font-bold text-gray-200">${formatTime(m.startTime)}</span>`;
     clone.querySelector(".tpl-sunset-val").innerHTML = `<span class="text-lg font-bold text-gray-200">${calcSunset(m.startTime, m.photoperiod)}</span>`;
     
     clone.querySelector(".tpl-photo-val").innerHTML = styleTimeStr(`${String(m.photoperiod).padStart(2, '0')}h 00m`, "text-white");
     clone.querySelector(".tpl-recovery-val").innerHTML = styleTimeStr(`${m.recoveryMins}m`, "text-red-400");
 
-    // Inject the subtle grey top borders for the Photoperiod row
-    clone.querySelector(".tpl-photo-val").parentElement.classList.add("pt-5", "border-t", "border-gray-800/40");
-    clone.querySelector(".tpl-recovery-val").parentElement.classList.add("pt-5", "border-t", "border-gray-800/40");
-
+    // Tighter padding for borders
+    clone.querySelector(".tpl-photo-val").parentElement.classList.add("pt-4", "border-t", "border-gray-800/40", "mt-1");
+    clone.querySelector(".tpl-recovery-val").parentElement.classList.add("pt-4", "border-t", "border-gray-800/40", "mt-1");
 
     // --- 3. The Load Shedding Warning ---
     const loadSheddingText = device.analyticsData?.today?.loadShedding || "00h 00m";
@@ -89,7 +91,7 @@ export function renderOverview(container, device) {
     
     if (loadSheddingText !== "00h 00m" || totalBlackoutText !== "00h 00m") {
         const blackoutWarningHTML = `
-            <div class="mt-4 p-4 rounded-xl bg-red-900/10 border border-red-900/40 cursor-pointer transition-colors hover:bg-red-900/20" id="btn-blackout-modal">
+            <div class="mt-3 p-4 rounded-xl bg-red-900/10 border border-red-900/40 cursor-pointer transition-colors hover:bg-red-900/20" id="btn-blackout-modal">
                 <div class="flex items-center justify-between">
                     <div>
                         <p class="text-[10px] font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5 mb-1">
@@ -114,18 +116,18 @@ export function renderOverview(container, device) {
         });
     }
 
-    // --- 4. Dynamic Additional Rows (With Borders!) ---
+    // --- 4. Dynamic Additional Rows (COMPACTED) ---
     const dynamicRows = clone.querySelector(".tpl-dynamic-rows");
     let rowsHTML = "";
 
     if (cap.hasCO2 && m.isCO2ScheduleSeparate) {
         rowsHTML += `
-            <div class="grid grid-cols-2 gap-4 mt-5">
-                <div class="pt-5 border-t border-gray-800/40">
+            <div class="grid grid-cols-2 gap-4 mt-4">
+                <div class="pt-4 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">CO2 Starts</p>
                     <span class="text-lg font-bold text-gray-200">${formatTime(m.co2OnTime)}</span>
                 </div>
-                <div class="text-right pt-5 border-t border-gray-800/40">
+                <div class="text-right pt-4 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">CO2 Ends</p>
                     <span class="text-lg font-bold text-gray-200">${formatTime(m.co2OffTime)}</span>
                 </div>
@@ -135,12 +137,12 @@ export function renderOverview(container, device) {
 
     if (cap.hasFan && m.isFanEnabled) {
         rowsHTML += `
-            <div class="grid grid-cols-2 gap-4 mt-5">
-                <div class="pt-5 border-t border-gray-800/40">
+            <div class="grid grid-cols-2 gap-4 mt-4">
+                <div class="pt-4 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Fan Starts</p>
                     <span class="text-lg font-bold text-gray-200">${formatTime(m.fanOnTime)}</span>
                 </div>
-                <div class="text-right pt-5 border-t border-gray-800/40">
+                <div class="text-right pt-4 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Fan Ends</p>
                     <span class="text-lg font-bold text-gray-200">${formatTime(m.fanOffTime)}</span>
                 </div>
