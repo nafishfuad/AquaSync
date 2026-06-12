@@ -49,15 +49,26 @@ export const API = {
             }
         }
 
-        // 3. Fallback to Cloud (Firebase) - Added timestamp query to bypass browser cache
+        // 3. Fallback to Cloud (Firebase)
         try {
             const response = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/state.json?t=${Date.now()}`);
             if (!response.ok) throw new Error("Cloud HTTP Error");
+            
             const data = await response.json();
+            
+            // 🔥 THE PHANTOM SHIELD: 
+            // If Firebase returns null (because the ESP32 briefly cleared the commands folder 
+            // but hasn't uploaded the state yet), we THROW an error to prevent the main app 
+            // from deleting the device from the UI!
+            if (data === null) {
+                console.warn("[API] Firebase returned a phantom null state. Ignoring to protect UI.");
+                throw new Error("Phantom State Detected");
+            }
+            
             return { source: "cloud", data };
         } catch (err) {
-            console.error("[API] Both Local and Cloud sync failed.");
-            return null;
+            console.error("[API] Both Local and Cloud sync failed or returned invalid data.");
+            return null; // The main app loop will interpret this as a sync failure, not a deletion command.
         }
     },
 
@@ -93,7 +104,7 @@ export const API = {
                 });
                 
                 if (res.ok) {
-                    // 🔥 Capture the instant JSON state reply from the ESP32!
+                    // Capture the instant JSON state reply from the ESP32!
                     const returnedData = await res.json();
                     return { success: true, source: "local", returnedState: returnedData };
                 }
@@ -119,13 +130,12 @@ export const API = {
         return { success: false, source: "none", returnedState: null };
     },
 
-    // 🔥 THE NAME FIX: Added 'deviceName' to the arguments and body
     async sendWifiProvisioning(ssid, pass, token, deviceName) {
         try {
             const response = await fetchWithTimeout('http://192.168.4.1/wifi', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ssid, pass, token, deviceName }) // Bundle it here!
+                body: JSON.stringify({ ssid, pass, token, deviceName })
             }, 10000); 
             
             return response.ok;
