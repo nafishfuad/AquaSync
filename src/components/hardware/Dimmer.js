@@ -23,12 +23,15 @@ export function renderLiveDimmer(container, device, onUpdate) {
         value.classList.replace("text-aqua", "text-gray-500");
     }
 
+    // 🔥 THE REAL-TIME UPGRADE
     slider.addEventListener("input", (e) => {
-        value.innerText = `${e.target.value}%`;
-    });
-
-    slider.addEventListener("change", (e) => {
-        onUpdate(parseInt(e.target.value));
+        const currentVal = parseInt(e.target.value);
+        value.innerText = `${currentVal}%`;
+        
+        // Pass 'true' as the second parameter. 
+        // This tells your main.js to use the 300ms `debouncedNetworkSend` queue!
+        // The physical tank will follow your finger in real-time.
+        onUpdate(currentVal, true); 
     });
 
     container.appendChild(clone);

@@ -135,7 +135,7 @@ export const API = {
             const response = await fetchWithTimeout('http://192.168.4.1/wifi', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ssid, pass, token, deviceName })
+                body: JSON.stringify({ ssid, pass, token, deviceName }) 
             }, 10000); 
             
             return response.ok;
