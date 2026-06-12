@@ -13,10 +13,10 @@ export function renderCharts(container, analyticsData) {
     Chart.defaults.font.family = "sans-serif";
     Chart.defaults.plugins.legend.display = false;
 
-    // Typography formatter
-    const styleTimeStr = (str, colorClass="text-gray-100") => {
+    // 🔥 PERFECTED AQUA FISH TYPOGRAPHY
+    const styleTimeStr = (str, colorClass="text-white") => {
         const match = str.match(/(\d{2})h (\d{2})m/);
-        if (match) return `<span class="text-2xl font-bold ${colorClass} tracking-tight">${match[1]}</span><span class="text-[10px] text-gray-500 font-bold mx-0.5">h</span> <span class="text-2xl font-bold ${colorClass} tracking-tight">${match[2]}</span><span class="text-[10px] text-gray-500 font-bold mx-0.5">m</span>`;
+        if (match) return `<span class="text-2xl font-bold ${colorClass} tracking-tight">${match[1]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">h</span> <span class="text-2xl font-bold ${colorClass} tracking-tight">${match[2]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">m</span>`;
         return `<span class="text-2xl font-bold ${colorClass}">${str}</span>`;
     };
 
@@ -37,7 +37,7 @@ export function renderCharts(container, analyticsData) {
             }
             statsHTML += `
                 <div class="${alignClass}">
-                    <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-2 font-bold">${stat.label}</p>
+                    <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-1 font-bold">${stat.label}</p>
                     <div>${styleTimeStr(stat.value, stat.color)}</div>
                 </div>
             `;
@@ -61,13 +61,13 @@ export function renderCharts(container, analyticsData) {
 
 
     // ==========================================
-    // 1. TODAY'S HIGH-RESOLUTION TIMELINE
+    // 1. TODAY'S DYNAMIC GRADUAL TIMELINE
     // ==========================================
     let labels = [];
     let scheduleData = [];
     let actualData = [];
 
-    if (m) {
+    if (m && analyticsData && analyticsData.today) {
         const parseMins = (str) => {
             let [h, min] = str.split(':');
             return (parseInt(h) * 60) + parseInt(min);
@@ -83,13 +83,16 @@ export function renderCharts(container, analyticsData) {
 
         const now = new Date();
         const currentMinsOfDay = (now.getHours() * 60) + now.getMinutes();
+        const awakeHistory = analyticsData.today.awakeData || Array(24).fill(1); 
 
+        // Generate data points every 5 minutes
         for (let t = graphStart; t <= graphEnd; t += 5) {
             let normalizedT = (t + 1440) % 1440; 
             let h = Math.floor(normalizedT / 60);
             let min = Math.floor(normalizedT % 60);
             
-            if (min === 0 || t === graphStart || t === graphEnd) {
+            // X-Axis Labels: Show an hour marker every 2 hours (like Aqua Fish)
+            if (min === 0 && h % 2 === 0) {
                 let ampm = h >= 12 ? 'PM' : 'AM';
                 let dispH = h % 12 || 12;
                 labels.push(`${dispH}${ampm}`);
@@ -97,19 +100,21 @@ export function renderCharts(container, analyticsData) {
                 labels.push('');
             }
             
+            // 1. Plot the Grey Schedule Track
             let isSched = (endMins > 1440) 
                 ? (normalizedT >= startMins || normalizedT <= (endMins % 1440))
                 : (normalizedT >= startMins && normalizedT <= endMins);
             scheduleData.push(isSched ? 1 : 0);
             
+            // 2. Plot the Live Cyan Fill
             if (t > currentMinsOfDay && !(endMins > 1440 && t < graphEnd)) {
-                actualData.push(null); 
+                actualData.push(null); // The future is null, which reveals the grey track beneath!
             } else {
                 let isActuallyOn = false;
                 if (h === now.getHours()) {
-                    isActuallyOn = device.metrics.isLightOn;
+                    isActuallyOn = device.metrics.isLightOn; // Live instant response
                 } else {
-                    isActuallyOn = analyticsData.today.hourlyGraph[h] > 0;
+                    isActuallyOn = analyticsData.today.hourlyGraph[h] > 0; // Past hourly history
                 }
                 actualData.push(isActuallyOn ? 1 : 0);
             }
@@ -130,9 +135,9 @@ export function renderCharts(container, analyticsData) {
                     {
                         label: 'Schedule Target',
                         data: scheduleData,
-                        borderColor: '#2d3748', 
+                        borderColor: '#374151', // Grey-700
                         borderWidth: 2,
-                        stepped: true,
+                        stepped: 'middle',
                         fill: false,
                         pointRadius: 0
                     },
@@ -140,21 +145,23 @@ export function renderCharts(container, analyticsData) {
                         label: 'Actual Progress',
                         data: actualData,
                         borderWidth: 3,
-                        stepped: true,
-                        fill: true,
-                        backgroundColor: getGradient(ctx, 0, 242, 254),
+                        stepped: 'middle',
+                        fill: false, // Solid stepped line, no fill underneath to match screenshot
                         pointRadius: 0,
+                        // 🔥 DYNAMIC SEGMENT LOGIC
                         segment: {
                             borderColor: (ctx) => {
                                 const i = ctx.p0DataIndex;
                                 if (scheduleData[i] === 1 && actualData[i] === 0) {
-                                    let normalizedT = (m ? (parseMins(m.startTime) - (m.photoperiod * 60 * 15 / 70)) : 0) + (i * 5);
+                                    // It should be ON, but it's OFF. Check if power was out.
+                                    let normalizedT = (graphStart + i * 5);
                                     normalizedT = (normalizedT + 1440) % 1440;
                                     let h = Math.floor(normalizedT / 60);
-                                    if (analyticsData.today.awakeData[h] === 0) return '#ef4444'; 
-                                    return '#2d3748'; 
+                                    // If awakeData for this hour is 0, it was a blackout -> Paint it RED
+                                    if (analyticsData.today.awakeData && analyticsData.today.awakeData[h] === 0) return '#ef4444'; 
+                                    return '#374151'; // Otherwise, it was manually turned off -> Paint it GREY
                                 }
-                                if (actualData[i] === 1) return '#00f2fe'; 
+                                if (actualData[i] === 1) return '#00f2fe'; // Running normally -> Paint it CYAN
                                 return 'transparent'; 
                             }
                         }
@@ -166,12 +173,12 @@ export function renderCharts(container, analyticsData) {
                 scales: {
                     y: { 
                         min: -0.1, max: 1.2, 
-                        ticks: { stepSize: 1, callback: v => v === 1 ? 'ON' : '' }, 
+                        ticks: { stepSize: 1, callback: v => v === 1 ? 'ON' : v === 0 ? 'OFF' : '' }, 
                         grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false } 
                     },
                     x: { 
                         grid: { display: false }, 
-                        ticks: { maxTicksLimit: 7, maxRotation: 45, minRotation: 45, callback: function(val, index) { return labels[index]; } } 
+                        ticks: { autoSkip: false, maxRotation: 45, minRotation: 45, callback: function(val, index) { return labels[index]; } } 
                     }
                 }
             }
@@ -180,7 +187,7 @@ export function renderCharts(container, analyticsData) {
 
 
     // ==========================================
-    // 2. 7-DAY GRAPH (Cyan Area & Hollow Dots)
+    // 2. 7-DAY GRAPH 
     // ==========================================
     const getLast7DaysLabels = () => {
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -218,7 +225,6 @@ export function renderCharts(container, analyticsData) {
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { 
-                    // 🔥 THE FIX: 'suggestedMax' replaces 'max' to allow dynamic scaling above 12h
                     y: { beginAtZero: true, suggestedMax: 12, grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false } }, 
                     x: { grid: { display: false } } 
                 }
@@ -228,7 +234,7 @@ export function renderCharts(container, analyticsData) {
 
 
     // ==========================================
-    // 3. 30-DAY GRAPH (Purple Area, No Dots)
+    // 3. 30-DAY GRAPH 
     // ==========================================
     createChartCard(
         "30-Day Overview", 
@@ -254,7 +260,6 @@ export function renderCharts(container, analyticsData) {
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { 
-                    // 🔥 THE FIX: 'suggestedMax' replaces 'max' to allow dynamic scaling
                     y: { beginAtZero: true, suggestedMax: 12, grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false } }, 
                     x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } } 
                 }

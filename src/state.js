@@ -77,7 +77,8 @@ export const DeviceStore = {
                 colorSpectrum: { w: 87, r: 100, g: 100, b: 100 }
             },
             analyticsData: {
-                today: { totalActive: "00h 00m", loadShedding: "00h 00m", totalBlackout: "00h 00m", hourlyGraph: Array(24).fill(0) },
+                // 🔥 CRASH FIX 1: Ensure awakeData exists in the default state
+                today: { totalActive: "00h 00m", loadShedding: "00h 00m", totalBlackout: "00h 00m", hourlyGraph: Array(24).fill(0), awakeData: Array(24).fill(0) },
                 week: { totalActive: "00h 00m", avgLight: "00h 00m", loadShedding: "00h 00m", dailyGraph: Array(7).fill(0) },
                 month: { totalActive: "00h 00m", avgLight: "00h 00m", loadShedding: "00h 00m", dailyGraph: Array(30).fill(0) }
             }
@@ -134,8 +135,8 @@ export const DeviceStore = {
             this.devices[hwid].name = newMetrics.deviceName;
         }
 
-        // 🔥 THE ANALYTICS CRUNCHER
-        if (newMetrics.hourlyData && newMetrics.dailyData) {
+        // 🔥 THE ANALYTICS CRUNCHER + CRASH FIX 2: Only crunch if awakeData is present in the payload
+        if (newMetrics.hourlyData && newMetrics.dailyData && newMetrics.awakeData) {
             const todayTotal = newMetrics.hourlyData.reduce((a, b) => a + b, 0);
             
             // 1. Dynamic Active Days Math
@@ -164,7 +165,8 @@ export const DeviceStore = {
                     totalActive: formatTime(todayTotal), 
                     loadShedding: formatTime(lightOutageMins), // Disrupted Light Schedule
                     totalBlackout: formatTime(totalOutageMins), // Total House Outage
-                    hourlyGraph: newMetrics.hourlyData 
+                    hourlyGraph: newMetrics.hourlyData,
+                    awakeData: newMetrics.awakeData // 🔥 CRASH FIX 3: Actually save it to memory so Charts.js can read it!
                 },
                 week: { 
                     totalActive: formatTime(weekTotal), 
