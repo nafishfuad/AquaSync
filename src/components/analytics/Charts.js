@@ -9,19 +9,23 @@ export function renderCharts(container, analyticsData) {
     Chart.defaults.font.family = "sans-serif";
     Chart.defaults.plugins.legend.display = false;
 
-    // Factory function to spawn chart layouts safely with dynamic header columns
-    const createChartCard = (title, statsArray, chartConfig) => {
+    // 🔥 THE TYPOGRAPHY ENGINE (For the Chart Headers)
+    const styleTimeStr = (str) => {
+        const match = str.match(/(\d{2})h (\d{2})m/);
+        if (match) return `<span class="text-3xl font-black tracking-tight">${match[1]}</span><span class="text-[12px] opacity-50 mx-0.5 font-bold tracking-wide">h</span><span class="text-3xl font-black tracking-tight ml-1">${match[2]}</span><span class="text-[12px] opacity-50 mx-0.5 font-bold tracking-wide">m</span>`;
+        return `<span class="text-3xl font-black tracking-tight">${str}</span>`;
+    };
+
+    // Factory function to spawn chart layouts safely
+    const createChartCard = (title, statsArray, chartConfigBuilder) => {
         const clone = template.content.cloneNode(true);
-        
         clone.querySelector(".tpl-chart-title").innerText = title;
         
-        // Dynamically build the top stats grid (2 cols vs 3 cols)
         const statsGrid = clone.querySelector(".tpl-stats-grid");
-        statsGrid.className = `grid grid-cols-${statsArray.length} gap-4 mb-4 pb-4 border-b border-gray-800/60 text-xs`;
+        statsGrid.className = `grid grid-cols-${statsArray.length} gap-4 mb-4 pb-6 border-b border-gray-800/60`;
         
         let statsHTML = "";
         statsArray.forEach((stat, index) => {
-            // Logic to align text: Left, Center, Right
             let alignClass = "text-left";
             if (statsArray.length === 2 && index === 1) alignClass = "text-right";
             else if (statsArray.length === 3) {
@@ -29,10 +33,11 @@ export function renderCharts(container, analyticsData) {
                 if (index === 2) alignClass = "text-right";
             }
 
+            // Notice we stripped 'text-lg' so the 3xl span can take over
             statsHTML += `
                 <div class="${alignClass}">
-                    <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">${stat.label}</p>
-                    <p class="text-lg font-bold ${stat.color}">${stat.value}</p>
+                    <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-2 font-bold">${stat.label}</p>
+                    <div class="${stat.color}">${styleTimeStr(stat.value)}</div>
                 </div>
             `;
         });
@@ -40,12 +45,14 @@ export function renderCharts(container, analyticsData) {
         
         const canvas = clone.querySelector(".tpl-chart-canvas");
         container.appendChild(clone); 
-        new Chart(canvas, chartConfig);
+        
+        // Build the chart config using the active canvas context for gradients
+        const ctx = canvas.getContext('2d');
+        const finalConfig = chartConfigBuilder(ctx);
+        new Chart(canvas, finalConfig);
     };
 
     // --- Dynamic Time Generators ---
-    
-    // Generates ['3PM', '4PM', ... up to current hour]
     const getLast24HoursLabels = () => {
         const labels = [];
         const d = new Date();
@@ -58,7 +65,6 @@ export function renderCharts(container, analyticsData) {
         return labels;
     };
 
-    // Generates ['Thu', 'Fri', 'Sat', ...] ending on today
     const getLast7DaysLabels = () => {
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const labels = [];
@@ -69,32 +75,47 @@ export function renderCharts(container, analyticsData) {
         return labels;
     };
 
+    // Helper to generate the exact glowing gradients from the screenshots
+    const getGradient = (ctx, r, g, b) => {
+        const gradient = ctx.createLinearGradient(0, 0, 0, 150);
+        gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.4)`); // Bright top
+        gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.0)`); // Faded bottom
+        return gradient;
+    };
 
-    // 1. TODAY'S HOURLY GRAPH (Stepped Line, 2 Columns)
+
+    // 1. TODAY'S HOURLY GRAPH (Stepped Line with Area Fill & Segmented Color)
     createChartCard(
         "Today's Hourly Activity", 
         [
             { label: "Total Active", value: analyticsData.today.totalActive, color: "text-white" },
             { label: "Load Shedding", value: analyticsData.today.loadShedding, color: "text-red-500" }
         ],
-        {
+        (ctx) => ({
             type: 'line',
             data: {
                 labels: getLast24HoursLabels(),
                 datasets: [{
                     data: analyticsData.today.hourlyGraph,
-                    borderColor: '#00f2fe',
-                    borderWidth: 2,
+                    borderWidth: 3,
                     stepped: true,
-                    fill: false,
-                    pointRadius: 0
+                    fill: true,
+                    backgroundColor: getGradient(ctx, 0, 242, 254), // Aqua Gradient
+                    pointRadius: 0,
+                    // 🔥 THE SEGMENT FIX: Cyan when ON, Dark Grey when OFF
+                    segment: {
+                        borderColor: (segmentCtx) => {
+                            if (segmentCtx.p0.parsed.y > 0 || segmentCtx.p1.parsed.y > 0) return '#00f2fe';
+                            return '#374151'; // Tailwind gray-700
+                        }
+                    }
                 }]
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: {
                     y: { 
-                        min: -0.1, max: 1.1, 
+                        min: -0.1, max: 1.2, 
                         ticks: { stepSize: 1, callback: v => v === 1 ? 'ON' : v === 0 ? 'OFF' : '' }, 
                         grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false } 
                     },
@@ -104,10 +125,10 @@ export function renderCharts(container, analyticsData) {
                     }
                 }
             }
-        }
+        })
     );
 
-    // 2. 7-DAY GRAPH (Aqua Curve with Hollow Points, 3 Columns)
+    // 2. 7-DAY GRAPH (Aqua Curve with Gradient & Hollow Points)
     createChartCard(
         "7-Day Overview", 
         [
@@ -115,22 +136,22 @@ export function renderCharts(container, analyticsData) {
             { label: "Daily Avg", value: analyticsData.week.avgLight, color: "text-aqua" },
             { label: "Load Shedding", value: analyticsData.week.loadShedding, color: "text-red-500" }
         ],
-        {
+        (ctx) => ({
             type: 'line',
             data: {
                 labels: getLast7DaysLabels(),
                 datasets: [{
                     data: analyticsData.week.dailyGraph,
                     borderColor: '#00f2fe',
-                    backgroundColor: 'rgba(0, 242, 254, 0.1)',
-                    borderWidth: 2,
+                    backgroundColor: getGradient(ctx, 0, 242, 254), // Aqua Gradient
+                    borderWidth: 3,
                     fill: true,
-                    tension: 0.4,
+                    tension: 0.4, // Smooth curve
                     pointBackgroundColor: '#121212', // Hollow center
                     pointBorderColor: '#00f2fe',     // Aqua ring
                     pointBorderWidth: 2,
-                    pointRadius: 4,
-                    pointHoverRadius: 6
+                    pointRadius: 5,
+                    pointHoverRadius: 7
                 }]
             },
             options: {
@@ -140,10 +161,10 @@ export function renderCharts(container, analyticsData) {
                     x: { grid: { display: false } } 
                 }
             }
-        }
+        })
     );
 
-    // 3. 30-DAY GRAPH (Purple Smooth Area, 3 Columns)
+    // 3. 30-DAY GRAPH (Purple Smooth Area, No Points)
     createChartCard(
         "30-Day Overview", 
         [
@@ -151,18 +172,18 @@ export function renderCharts(container, analyticsData) {
             { label: "Daily Avg", value: analyticsData.month.avgLight, color: "text-purple-400" },
             { label: "Load Shedding", value: analyticsData.month.loadShedding, color: "text-red-500" }
         ],
-        {
+        (ctx) => ({
             type: 'line',
             data: {
                 labels: Array.from({length: 30}, (_, i) => i+1),
                 datasets: [{
                     data: analyticsData.month.dailyGraph,
                     borderColor: '#a855f7', 
-                    backgroundColor: 'rgba(168, 85, 247, 0.1)',
-                    borderWidth: 2,
+                    backgroundColor: getGradient(ctx, 168, 85, 247), // Purple Gradient
+                    borderWidth: 3,
                     fill: true,
                     tension: 0.4,
-                    pointRadius: 0 // No points on the 30-day graph
+                    pointRadius: 0 // No points on the 30-day graph to keep it clean
                 }]
             },
             options: {
@@ -172,6 +193,6 @@ export function renderCharts(container, analyticsData) {
                     x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } } 
                 }
             }
-        }
+        })
     );
 }
