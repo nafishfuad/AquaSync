@@ -12,18 +12,28 @@ export const DeviceStore = {
 
     init() {
         try {
-            // 🔥 AUTO-WIPE V2.3: Nuke the corrupted cache so the new arrays load cleanly
-            if (!localStorage.getItem("aquasync_v2_3")) {
-                console.warn("[STATE] Performing hard migration wipe to clear corrupted memory...");
-                localStorage.clear();
-                localStorage.setItem("aquasync_v2_3", "true"); 
-            }
             const storedData = localStorage.getItem("aquasync_ecosystem");
-            if (storedData) this.devices = JSON.parse(storedData);
+            if (storedData) {
+                this.devices = JSON.parse(storedData);
+
+                // 🔥 PRODUCTION FIX: Soft Migration instead of Hard Wipe.
+                // If we ever add new features, this patches existing devices without deleting them.
+                for (let hwid in this.devices) {
+                    let dev = this.devices[hwid];
+                    if (dev.analyticsData && dev.analyticsData.today) {
+                        if (!dev.analyticsData.today.awakeData) {
+                            dev.analyticsData.today.awakeData = Array(24).fill(1);
+                        }
+                    }
+                }
+            }
             this.activeDeviceId = localStorage.getItem("aquasync_active_hwid");
+
         } catch (error) {
-            console.error("[STATE] Memory validation failed. Resetting ecosystem.", error);
-            localStorage.clear();
+            console.error("[STATE] Memory validation failed. Corrupted JSON.", error);
+            // Only remove app-specific keys, never use localStorage.clear() in production!
+            localStorage.removeItem("aquasync_ecosystem");
+            localStorage.removeItem("aquasync_active_hwid");
             this.devices = {};
             this.activeDeviceId = null;
         }
@@ -43,7 +53,6 @@ export const DeviceStore = {
                 fanSpeed: 80, colorSpectrum: { w: 87, r: 100, g: 100, b: 100 }
             },
             analyticsData: {
-                // 🔥 CRASH FIX: Default awakeData to prevent Chart.js from breaking
                 today: { totalActive: "00h 00m", loadShedding: "00h 00m", totalBlackout: "00h 00m", hourlyGraph: Array(24).fill(0), awakeData: Array(24).fill(1) },
                 week: { totalActive: "00h 00m", avgLight: "00h 00m", loadShedding: "00h 00m", dailyGraph: Array(7).fill(0) },
                 month: { totalActive: "00h 00m", avgLight: "00h 00m", loadShedding: "00h 00m", dailyGraph: Array(30).fill(0) }
@@ -90,7 +99,6 @@ export const DeviceStore = {
         this.devices[hwid].metrics = { ...this.devices[hwid].metrics, ...newMetrics };
         if (newMetrics.deviceName) this.devices[hwid].name = newMetrics.deviceName;
 
-        // 🔥 THE LIVE DATA FIX: Wait for the full payload, then crunch the math
         if (newMetrics.hourlyData && newMetrics.dailyData && newMetrics.awakeData) {
             const todayTotal = newMetrics.hourlyData.reduce((a, b) => a + b, 0);
             
@@ -106,7 +114,6 @@ export const DeviceStore = {
             const lightOutageMins = newMetrics.lightLoadSheddingToday || 0;
             const totalOutageMins = newMetrics.totalLoadSheddingToday || 0;
 
-            // 🔥 STITCH TODAY'S LIVE DATA: Appends today's exact hours onto the end of the history array
             const weekGraphData = [...newMetrics.dailyData.slice(0, 6).reverse(), todayTotal].map(m => Number((m / 60).toFixed(2)));
             const monthGraphData = [...newMetrics.dailyData.slice(0, 29).reverse(), todayTotal].map(m => Number((m / 60).toFixed(2)));
 
