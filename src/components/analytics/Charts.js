@@ -9,11 +9,13 @@ export function renderCharts(container, analyticsData) {
     const device = DeviceStore.getActiveDevice();
     const m = device ? device.metrics : null;
 
-    Chart.defaults.color = "#6b7280";
+    // 🔥 THEME DETECTION: Check if Light Mode is active to invert Chart.js colors
+    const isLightMode = document.body.classList.contains("light-theme");
+    const gridColor = isLightMode ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.05)';
+    Chart.defaults.color = isLightMode ? "#64748b" : "#6b7280"; // Slate-500 vs Gray-500
     Chart.defaults.font.family = "sans-serif";
     Chart.defaults.plugins.legend.display = false;
 
-    // 🔥 PRECISE TYPOGRAPHY: Shrunk to text-2xl and uses whitespace-nowrap
     const styleTimeStr = (str, colorClass="text-white") => {
         const match = str.match(/(\d{2})h (\d{2})m/);
         if (match) return `<div class="whitespace-nowrap"><span class="text-2xl font-bold ${colorClass} tracking-tight">${match[1]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">h</span><span class="text-2xl font-bold ${colorClass} tracking-tight">${match[2]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">m</span></div>`;
@@ -77,7 +79,6 @@ export function renderCharts(container, analyticsData) {
         const photoMins = m.photoperiod * 60;
         const endMins = startMins + photoMins;
         
-        // Exact timeline framing: Strictly 2 hours before start, 2 hours after end (No % padding)
         const graphStartMins = startMins - 120; 
         const graphEndMins = endMins + 120; 
 
@@ -93,13 +94,11 @@ export function renderCharts(container, analyticsData) {
         const awakeHistory = analyticsData.today.awakeData || Array(24).fill(1);
         const hasLoadShedding = analyticsData.today.loadShedding !== "00h 00m";
 
-        // 🔥 BULLETPROOF FIX: Generate exactly ONE continuous line
         for (let t = graphStartMins; t <= graphEndMins; t += 5) {
             let normalizedT = (t + 1440) % 1440; 
             let h = Math.floor(normalizedT / 60);
             let min = Math.floor(normalizedT % 60);
             
-            // X-Axis labels: Show text exactly on the hour
             if (min === 0) {
                 let ampm = h >= 12 ? 'PM' : 'AM';
                 let dispH = h % 12 || 12;
@@ -120,27 +119,23 @@ export function renderCharts(container, analyticsData) {
                 if (h === now.getHours() && t >= (nowMins - (nowMins % 5))) {
                     isActuallyOn = device.metrics.isLightOn;
                 } else {
-                    // Force the chart to respect the schedule bounds to prevent "broken" overhangs
                     if (isSched) isActuallyOn = hourlyGraph[h] > 0;
                 }
 
-                // If scheduled to be ON, but it is OFF, AND power dropped -> Paint it RED
                 if (isSched && !isActuallyOn && hasLoadShedding && awakeHistory[h] === 0) {
                     isBlackout = true;
                 }
             }
 
-            // Determine the Y-position for this slice
             let y = (isSched || isActuallyOn) ? 1 : 0;
             chartData.push(y);
 
-            // Determine the dynamic color for this exact 5-minute slice
-            let sliceColor = '#374151'; // Default Grey for OFF / Future
+            let sliceColor = isLightMode ? '#cbd5e1' : '#374151'; // Lighter grey track for light mode
             if (y === 1) {
-                if (isFuture) sliceColor = '#374151'; 
-                else if (isActuallyOn) sliceColor = '#fbbf24'; // Amber Active (Matches text!)
-                else if (isBlackout) sliceColor = '#ef4444'; // Red Blackout
-                else sliceColor = '#374151'; // Manually off -> Grey
+                if (isFuture) sliceColor = isLightMode ? '#cbd5e1' : '#374151'; 
+                else if (isActuallyOn) sliceColor = '#00f2fe'; 
+                else if (isBlackout) sliceColor = '#ef4444'; 
+                else sliceColor = isLightMode ? '#cbd5e1' : '#374151'; 
             }
             segmentColors.push(sliceColor);
         }
@@ -164,15 +159,11 @@ export function renderCharts(container, analyticsData) {
                         stepped: 'middle', 
                         fill: false,   
                         pointRadius: 0,
-                        // 🔥 THE MAGIC COLOR ENGINE: Maps the colors directly to the single continuous line!
                         segment: {
                             borderColor: (ctx) => {
-                                // If it's a bottom flat line, paint it faint grey
-                                if (ctx.p0.parsed.y === 0 && ctx.p1.parsed.y === 0) return '#1f2937'; 
-                                // If it's a top flat line, paint it the assigned color (Amber/Red/Grey)
+                                if (ctx.p0.parsed.y === 0 && ctx.p1.parsed.y === 0) return isLightMode ? '#e2e8f0' : '#1f2937'; 
                                 if (ctx.p0.parsed.y === 1 && ctx.p1.parsed.y === 1) return segmentColors[ctx.p0DataIndex];
-                                // If it's a vertical rising/falling edge, match the color of the active point
-                                return segmentColors[ctx.p0.parsed.y === 1 ? ctx.p0DataIndex : ctx.p1DataIndex] || '#fbbf24';
+                                return segmentColors[ctx.p0.parsed.y === 1 ? ctx.p0DataIndex : ctx.p1DataIndex] || '#00f2fe';
                             }
                         }
                     }
@@ -184,7 +175,7 @@ export function renderCharts(container, analyticsData) {
                     y: { 
                         min: -0.1, max: 1.1, 
                         ticks: { stepSize: 1, callback: v => v === 1 ? 'ON' : (v === 0 ? 'OFF' : '') }, 
-                        grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false } 
+                        grid: { color: gridColor, drawBorder: false } 
                     },
                     x: { 
                         grid: { display: false }, 
@@ -197,7 +188,7 @@ export function renderCharts(container, analyticsData) {
 
 
     // ==========================================
-    // 2. 7-DAY GRAPH (Cyan Area & Hollow Dots)
+    // 2. 7-DAY GRAPH 
     // ==========================================
     const getLast7DaysLabels = () => {
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -225,7 +216,7 @@ export function renderCharts(container, analyticsData) {
                     borderWidth: 2,
                     fill: true,
                     tension: 0.4, 
-                    pointBackgroundColor: '#121212', 
+                    pointBackgroundColor: isLightMode ? '#ffffff' : '#121212', 
                     pointBorderColor: '#00f2fe',     
                     pointBorderWidth: 2,
                     pointRadius: 4,
@@ -235,7 +226,7 @@ export function renderCharts(container, analyticsData) {
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { 
-                    y: { beginAtZero: true, suggestedMax: 12, grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false } }, 
+                    y: { beginAtZero: true, suggestedMax: 12, grid: { color: gridColor, drawBorder: false } }, 
                     x: { grid: { display: false } } 
                 }
             }
@@ -244,7 +235,7 @@ export function renderCharts(container, analyticsData) {
 
 
     // ==========================================
-    // 3. 30-DAY GRAPH (Purple Area, No Dots)
+    // 3. 30-DAY GRAPH
     // ==========================================
     createChartCard(
         "30-Day Overview", 
@@ -270,7 +261,7 @@ export function renderCharts(container, analyticsData) {
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { 
-                    y: { beginAtZero: true, suggestedMax: 12, grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false } }, 
+                    y: { beginAtZero: true, suggestedMax: 12, grid: { color: gridColor, drawBorder: false } }, 
                     x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } } 
                 }
             }

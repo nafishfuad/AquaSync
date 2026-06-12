@@ -37,6 +37,43 @@
       ::-webkit-scrollbar { display: none; }
       .custom-scrollbar::-webkit-scrollbar { width: 4px; display: block; }
       .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #4b5563; border-radius: 10px; }
+
+      /* 🔥 LIGHT THEME: Modern, Minimalistic, High Contrast */
+      body.light-theme {
+        --bg-deep-rgb: 248, 250, 252; /* Tailwind slate-50 */
+        --bg-card-rgb: 255, 255, 255; /* Pure white cards */
+      }
+      
+      /* High Contrast Text */
+      body.light-theme .text-white { color: #0f172a !important; } /* Deep Slate 900 */
+      body.light-theme .text-gray-200 { color: #1e293b !important; } 
+      body.light-theme .text-gray-300 { color: #334155 !important; }
+      body.light-theme .text-gray-400 { color: #475569 !important; }
+      body.light-theme .text-gray-500 { color: #64748b !important; }
+      
+      /* High Contrast Accents */
+      body.light-theme .text-aqua { color: #0284c7 !important; } /* Sky 600 */
+      body.light-theme .text-amber-400 { color: #d97706 !important; } /* Amber 600 */
+      body.light-theme .text-green-400 { color: #16a34a !important; } /* Green 600 */
+      body.light-theme .text-blue-400 { color: #2563eb !important; } /* Blue 600 */
+      body.light-theme .text-red-400 { color: #dc2626 !important; } /* Red 600 */
+      body.light-theme .text-purple-400 { color: #9333ea !important; } /* Purple 600 */
+
+      /* Minimalistic Borders & Backgrounds */
+      body.light-theme .border-gray-800, 
+      body.light-theme .border-gray-800\/40,
+      body.light-theme .border-gray-800\/60,
+      body.light-theme .border-gray-700,
+      body.light-theme .border-gray-700\/50 { border-color: #e2e8f0 !important; } /* Slate 200 */
+      
+      body.light-theme .bg-gray-800, 
+      body.light-theme .bg-gray-700, 
+      body.light-theme .bg-\[\#121212\] { background-color: #f1f5f9 !important; } /* Slate 100 inputs/buttons */
+      
+      /* Soften the glowing shadows for a clean daytime look */
+      body.light-theme .shadow-lg { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important; }
+      body.light-theme .shadow-\[0_10px_40px_rgba\(0\,0\,0\,0\.5\)\] { box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08) !important; }
+      body.light-theme .bg-cardbg\/70 { background-color: rgba(255, 255, 255, 0.85) !important; }
     </style>
   </head>
 
