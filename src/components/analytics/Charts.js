@@ -1,8 +1,14 @@
 // src/components/analytics/Charts.js
 
+import { DeviceStore } from '../../state.js';
+
 export function renderCharts(container, analyticsData) {
     const template = document.getElementById("tpl-analytics-chart-card");
     if (!template) return;
+
+    // Grab active device context so we can read the exact schedule!
+    const device = DeviceStore.getActiveDevice();
+    const m = device ? device.metrics : null;
 
     // Apply global Chart.js aesthetic defaults
     Chart.defaults.color = "#6b7280";
@@ -10,10 +16,10 @@ export function renderCharts(container, analyticsData) {
     Chart.defaults.plugins.legend.display = false;
 
     // 🔥 THE TYPOGRAPHY ENGINE (For the Chart Headers)
-    const styleTimeStr = (str) => {
+    const styleTimeStr = (str, colorClass="text-gray-200") => {
         const match = str.match(/(\d{2})h (\d{2})m/);
-        if (match) return `<span class="text-3xl font-black tracking-tight">${match[1]}</span><span class="text-[12px] opacity-50 mx-0.5 font-bold tracking-wide">h</span><span class="text-3xl font-black tracking-tight ml-1">${match[2]}</span><span class="text-[12px] opacity-50 mx-0.5 font-bold tracking-wide">m</span>`;
-        return `<span class="text-3xl font-black tracking-tight">${str}</span>`;
+        if (match) return `<span class="text-2xl font-bold ${colorClass} tracking-tight">${match[1]}</span><span class="text-[10px] text-gray-500 font-bold mx-0.5">h</span> <span class="text-2xl font-bold ${colorClass} tracking-tight">${match[2]}</span><span class="text-[10px] text-gray-500 font-bold mx-0.5">m</span>`;
+        return `<span class="text-2xl font-bold ${colorClass}">${str}</span>`;
     };
 
     // Factory function to spawn chart layouts safely
@@ -22,7 +28,7 @@ export function renderCharts(container, analyticsData) {
         clone.querySelector(".tpl-chart-title").innerText = title;
         
         const statsGrid = clone.querySelector(".tpl-stats-grid");
-        statsGrid.className = `grid grid-cols-${statsArray.length} gap-4 mb-4 pb-6 border-b border-gray-800/60`;
+        statsGrid.className = `grid grid-cols-${statsArray.length} gap-4 mb-4 pb-6 border-b border-gray-800/40`;
         
         let statsHTML = "";
         statsArray.forEach((stat, index) => {
@@ -33,11 +39,10 @@ export function renderCharts(container, analyticsData) {
                 if (index === 2) alignClass = "text-right";
             }
 
-            // Notice we stripped 'text-lg' so the 3xl span can take over
             statsHTML += `
                 <div class="${alignClass}">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-2 font-bold">${stat.label}</p>
-                    <div class="${stat.color}">${styleTimeStr(stat.value)}</div>
+                    <div>${styleTimeStr(stat.value, stat.color)}</div>
                 </div>
             `;
         });
@@ -46,45 +51,59 @@ export function renderCharts(container, analyticsData) {
         const canvas = clone.querySelector(".tpl-chart-canvas");
         container.appendChild(clone); 
         
-        // Build the chart config using the active canvas context for gradients
         const ctx = canvas.getContext('2d');
         const finalConfig = chartConfigBuilder(ctx);
         new Chart(canvas, finalConfig);
     };
 
-    // --- Dynamic Time Generators ---
-    const getLast24HoursLabels = () => {
-        const labels = [];
-        const d = new Date();
-        for (let i = 23; i >= 0; i--) {
-            const hour = new Date(d.getTime() - (i * 60 * 60 * 1000)).getHours();
-            const ampm = hour >= 12 ? 'PM' : 'AM';
-            const h = hour % 12 || 12;
-            labels.push(`${h}${ampm}`);
-        }
-        return labels;
-    };
-
-    const getLast7DaysLabels = () => {
-        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const labels = [];
-        const today = new Date().getDay();
-        for (let i = 6; i >= 0; i--) {
-            labels.push(days[(today - i + 7) % 7]);
-        }
-        return labels;
-    };
-
-    // Helper to generate the exact glowing gradients from the screenshots
+    // Helper to generate the exact glowing gradients
     const getGradient = (ctx, r, g, b) => {
         const gradient = ctx.createLinearGradient(0, 0, 0, 150);
-        gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.4)`); // Bright top
-        gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.0)`); // Faded bottom
+        gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.35)`); 
+        gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.0)`); 
         return gradient;
     };
 
 
-    // 1. TODAY'S HOURLY GRAPH (Stepped Line with Area Fill & Segmented Color)
+    // ==========================================
+    // 1. TODAY'S DYNAMIC HOURLY TIMELINE
+    // ==========================================
+    let scheduleData = [];
+    let actualData = [];
+    let todayLabels = [];
+
+    if (m) {
+        const parseTime = (str) => {
+            let [h, min] = str.split(':');
+            return parseInt(h) + (parseInt(min) / 60);
+        };
+        const startH = parseTime(m.startTime);
+        const endH = startH + m.photoperiod;
+        const currentHour = new Date().getHours() + (new Date().getMinutes() / 60);
+
+        for (let i = 0; i <= 24; i++) {
+            // X-Axis Labels (e.g., 2PM, 4PM)
+            let ampm = i >= 12 && i < 24 ? 'PM' : 'AM';
+            let h = i % 12 || 12;
+            todayLabels.push(`${h}${ampm}`);
+
+            // The Grey Schedule Line (Handles midnight rollover)
+            let isScheduled = false;
+            if (endH <= 24) isScheduled = (i >= startH && i < endH);
+            else isScheduled = (i >= startH || i < (endH - 24));
+            scheduleData.push(isScheduled ? 1 : 0);
+
+            // The Actual Progress Line
+            if (i <= currentHour) {
+                // If ESP32 recorded active minutes in this hour, it ran!
+                let isActive = analyticsData.today.hourlyGraph[i] > 0;
+                actualData.push(isActive ? 1 : 0);
+            } else {
+                actualData.push(null); // Don't draw the future
+            }
+        }
+    }
+
     createChartCard(
         "Today's Hourly Activity", 
         [
@@ -94,41 +113,67 @@ export function renderCharts(container, analyticsData) {
         (ctx) => ({
             type: 'line',
             data: {
-                labels: getLast24HoursLabels(),
-                datasets: [{
-                    data: analyticsData.today.hourlyGraph,
-                    borderWidth: 3,
-                    stepped: true,
-                    fill: true,
-                    backgroundColor: getGradient(ctx, 0, 242, 254), // Aqua Gradient
-                    pointRadius: 0,
-                    // 🔥 THE SEGMENT FIX: Cyan when ON, Dark Grey when OFF
-                    segment: {
-                        borderColor: (segmentCtx) => {
-                            if (segmentCtx.p0.parsed.y > 0 || segmentCtx.p1.parsed.y > 0) return '#00f2fe';
-                            return '#374151'; // Tailwind gray-700
+                labels: todayLabels,
+                datasets: [
+                    {
+                        label: 'Schedule Target',
+                        data: scheduleData,
+                        borderColor: '#374151', // Grey-700
+                        borderWidth: 2,
+                        stepped: 'middle',
+                        fill: false,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Actual Progress',
+                        data: actualData,
+                        borderWidth: 3,
+                        stepped: 'middle',
+                        fill: true,
+                        backgroundColor: getGradient(ctx, 0, 242, 254), // Aqua Gradient
+                        pointRadius: 0,
+                        segment: {
+                            borderColor: (ctx) => {
+                                const i = ctx.p0DataIndex;
+                                // 🔥 THE LOAD SHEDDING HIGHLIGHT:
+                                // If it was supposed to be ON, but the actual data is OFF -> Turn Red!
+                                if (scheduleData[i] === 1 && actualData[i] === 0) return '#ef4444'; // Red
+                                return '#00f2fe'; // Cyan
+                            }
                         }
                     }
-                }]
+                ]
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: {
                     y: { 
-                        min: -0.1, max: 1.2, 
+                        min: -0.1, max: 1.1, 
                         ticks: { stepSize: 1, callback: v => v === 1 ? 'ON' : v === 0 ? 'OFF' : '' }, 
                         grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false } 
                     },
                     x: { 
                         grid: { display: false }, 
-                        ticks: { maxTicksLimit: 12, maxRotation: 45, minRotation: 45 } 
+                        // To make it look clean like Aqua Fish, only show every 2 hours
+                        ticks: { maxTicksLimit: 12, maxRotation: 45, minRotation: 45, callback: function(val, index) { return index % 2 === 0 ? this.getLabelForValue(val) : ''; } } 
                     }
                 }
             }
         })
     );
 
-    // 2. 7-DAY GRAPH (Aqua Curve with Gradient & Hollow Points)
+
+    // ==========================================
+    // 2. 7-DAY GRAPH (Cyan Area & Hollow Dots)
+    // ==========================================
+    const getLast7DaysLabels = () => {
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const labels = [];
+        const today = new Date().getDay();
+        for (let i = 6; i >= 0; i--) labels.push(days[(today - i + 7) % 7]);
+        return labels;
+    };
+
     createChartCard(
         "7-Day Overview", 
         [
@@ -143,12 +188,12 @@ export function renderCharts(container, analyticsData) {
                 datasets: [{
                     data: analyticsData.week.dailyGraph,
                     borderColor: '#00f2fe',
-                    backgroundColor: getGradient(ctx, 0, 242, 254), // Aqua Gradient
+                    backgroundColor: getGradient(ctx, 0, 242, 254),
                     borderWidth: 3,
                     fill: true,
-                    tension: 0.4, // Smooth curve
-                    pointBackgroundColor: '#121212', // Hollow center
-                    pointBorderColor: '#00f2fe',     // Aqua ring
+                    tension: 0.4, 
+                    pointBackgroundColor: '#121212', 
+                    pointBorderColor: '#00f2fe',     
                     pointBorderWidth: 2,
                     pointRadius: 5,
                     pointHoverRadius: 7
@@ -157,14 +202,17 @@ export function renderCharts(container, analyticsData) {
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { 
-                    y: { beginAtZero: true, max: 12, grid: { color: 'rgba(255,255,255,0.05)' } }, 
+                    y: { beginAtZero: true, max: 12, grid: { color: 'rgba(255,255,255,0.1)', drawBorder: false } }, 
                     x: { grid: { display: false } } 
                 }
             }
         })
     );
 
-    // 3. 30-DAY GRAPH (Purple Smooth Area, No Points)
+
+    // ==========================================
+    // 3. 30-DAY GRAPH (Purple Area, No Dots)
+    // ==========================================
     createChartCard(
         "30-Day Overview", 
         [
@@ -179,17 +227,17 @@ export function renderCharts(container, analyticsData) {
                 datasets: [{
                     data: analyticsData.month.dailyGraph,
                     borderColor: '#a855f7', 
-                    backgroundColor: getGradient(ctx, 168, 85, 247), // Purple Gradient
+                    backgroundColor: getGradient(ctx, 168, 85, 247),
                     borderWidth: 3,
                     fill: true,
                     tension: 0.4,
-                    pointRadius: 0 // No points on the 30-day graph to keep it clean
+                    pointRadius: 0 
                 }]
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { 
-                    y: { beginAtZero: true, max: 12, grid: { color: 'rgba(255,255,255,0.05)' } }, 
+                    y: { beginAtZero: true, max: 12, grid: { color: 'rgba(255,255,255,0.1)', drawBorder: false } }, 
                     x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } } 
                 }
             }
