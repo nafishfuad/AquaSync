@@ -66,14 +66,14 @@ export function renderOverview(container, device) {
         `);
     }
 
-    statusGrid.className = `grid grid-cols-${statuses.length} gap-4 pb-4 border-b border-gray-800/40`;
+    // Tighter padding bottom (pb-3)
+    statusGrid.className = `grid grid-cols-${statuses.length} gap-4 pb-3 border-b border-gray-800/40`;
     statusGrid.innerHTML = statuses.join('');
 
-    // --- 2. Clean Row Layout (COMPACTED) ---
-    // Override the generic container grid gap
+    // --- 2. Clean Row Layout (ULTRA COMPACT) ---
     const midGrid = clone.querySelector(".tpl-sunrise-val").parentElement.parentElement;
-    midGrid.classList.remove("gap-y-6", "pt-6");
-    midGrid.classList.add("gap-y-4", "pt-4");
+    midGrid.classList.remove("gap-y-6", "pt-6", "gap-y-4", "pt-4");
+    midGrid.classList.add("gap-y-3", "pt-3");
 
     clone.querySelector(".tpl-sunrise-val").innerHTML = `<span class="text-lg font-bold text-gray-200">${formatTime(m.startTime)}</span>`;
     clone.querySelector(".tpl-sunset-val").innerHTML = `<span class="text-lg font-bold text-gray-200">${calcSunset(m.startTime, m.photoperiod)}</span>`;
@@ -81,9 +81,9 @@ export function renderOverview(container, device) {
     clone.querySelector(".tpl-photo-val").innerHTML = styleTimeStr(`${String(m.photoperiod).padStart(2, '0')}h 00m`, "text-white");
     clone.querySelector(".tpl-recovery-val").innerHTML = styleTimeStr(`${m.recoveryMins}m`, "text-red-400");
 
-    // Tighter padding for borders
-    clone.querySelector(".tpl-photo-val").parentElement.classList.add("pt-4", "border-t", "border-gray-800/40", "mt-1");
-    clone.querySelector(".tpl-recovery-val").parentElement.classList.add("pt-4", "border-t", "border-gray-800/40", "mt-1");
+    // Tighter top padding (pt-3)
+    clone.querySelector(".tpl-photo-val").parentElement.classList.add("pt-3", "border-t", "border-gray-800/40");
+    clone.querySelector(".tpl-recovery-val").parentElement.classList.add("pt-3", "border-t", "border-gray-800/40");
 
     // --- 3. The Load Shedding Warning ---
     const loadSheddingText = device.analyticsData?.today?.loadShedding || "00h 00m";
@@ -116,18 +116,19 @@ export function renderOverview(container, device) {
         });
     }
 
-    // --- 4. Dynamic Additional Rows (COMPACTED) ---
+    // --- 4. Dynamic Additional Rows (ULTRA COMPACT) ---
     const dynamicRows = clone.querySelector(".tpl-dynamic-rows");
     let rowsHTML = "";
 
+    // Tighter margins and paddings (mt-3 / pt-3)
     if (cap.hasCO2 && m.isCO2ScheduleSeparate) {
         rowsHTML += `
-            <div class="grid grid-cols-2 gap-4 mt-4">
-                <div class="pt-4 border-t border-gray-800/40">
+            <div class="grid grid-cols-2 gap-4 mt-3">
+                <div class="pt-3 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">CO2 Starts</p>
                     <span class="text-lg font-bold text-gray-200">${formatTime(m.co2OnTime)}</span>
                 </div>
-                <div class="text-right pt-4 border-t border-gray-800/40">
+                <div class="text-right pt-3 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">CO2 Ends</p>
                     <span class="text-lg font-bold text-gray-200">${formatTime(m.co2OffTime)}</span>
                 </div>
@@ -137,12 +138,12 @@ export function renderOverview(container, device) {
 
     if (cap.hasFan && m.isFanEnabled) {
         rowsHTML += `
-            <div class="grid grid-cols-2 gap-4 mt-4">
-                <div class="pt-4 border-t border-gray-800/40">
+            <div class="grid grid-cols-2 gap-4 mt-3">
+                <div class="pt-3 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Fan Starts</p>
                     <span class="text-lg font-bold text-gray-200">${formatTime(m.fanOnTime)}</span>
                 </div>
-                <div class="text-right pt-4 border-t border-gray-800/40">
+                <div class="text-right pt-3 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Fan Ends</p>
                     <span class="text-lg font-bold text-gray-200">${formatTime(m.fanOffTime)}</span>
                 </div>

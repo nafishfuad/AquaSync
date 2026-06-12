@@ -296,6 +296,41 @@
         </div>
       </div>
     </template>
+    <div id="about-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-[300] animate-fade-in px-4">
+  <div class="bg-cardbg rounded-3xl p-6 shadow-2xl border border-gray-800 w-full max-w-sm relative overflow-hidden">
+    
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-sm uppercase text-gray-500 font-bold tracking-wider">About</h2>
+      <button aria-label="Close About" onclick="hideAboutModal()" class="text-gray-500 hover:text-red-400 text-3xl leading-none transition-colors cursor-pointer">&times;</button>
+    </div>
+
+    <div class="text-center flex flex-col items-center mb-6">
+      <div class="w-16 h-16 bg-gradient-to-br from-aqua to-blue-600 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(0,242,254,0.3)] mb-4">
+        <span class="text-3xl">🌊</span>
+      </div>
+      <h2 class="text-xl font-bold text-white tracking-wider">AquaSync</h2>
+      <p class="text-[10px] text-aqua font-semibold tracking-widest uppercase mb-4">Intelligence for every drop</p>
+      <p class="text-[11px] text-gray-400 leading-relaxed px-2">
+        Pro-grade automation designed to maintain perfect water chemistry and lighting cycles for high-tech planted aquariums.
+      </p>
+    </div>
+
+    <div class="border-t border-gray-800 pt-5">
+      <h3 class="text-[10px] uppercase text-gray-500 font-semibold mb-4 text-center">Developed By</h3>
+      <div class="flex items-center justify-center mb-6">
+        <div class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center text-lg mr-3 border border-gray-700">👨‍💻</div>
+        <div class="text-left">
+          <p class="text-white font-bold text-sm">Nafish Fuad</p>
+          <p class="text-[9px] text-gray-500 uppercase tracking-wider">Engineered in Dhaka, Bangladesh</p>
+        </div>
+      </div>
+      <p class="text-[9px] text-gray-600 text-center tracking-tight">
+        &copy; 2026 AquaSync Ecosystem. All rights reserved. <br/> Unauthorized reproduction of hardware or software prohibited.
+      </p>
+    </div>
+    
+  </div>
+</div>
 
     <script type="module" src="./src/main.js"></script>
   </body>
