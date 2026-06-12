@@ -13,11 +13,10 @@ export function renderCharts(container, analyticsData) {
     Chart.defaults.font.family = "sans-serif";
     Chart.defaults.plugins.legend.display = false;
 
-    // 🔥 PERFECTED AQUA FISH TYPOGRAPHY
     const styleTimeStr = (str, colorClass="text-white") => {
         const match = str.match(/(\d{2})h (\d{2})m/);
-        if (match) return `<span class="text-2xl font-bold ${colorClass} tracking-tight">${match[1]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">h</span> <span class="text-2xl font-bold ${colorClass} tracking-tight">${match[2]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">m</span>`;
-        return `<span class="text-2xl font-bold ${colorClass}">${str}</span>`;
+        if (match) return `<span class="text-3xl font-bold ${colorClass} tracking-tight">${match[1]}</span><span class="text-xs text-gray-500 font-bold mx-0.5">h</span> <span class="text-3xl font-bold ${colorClass} tracking-tight">${match[2]}</span><span class="text-xs text-gray-500 font-bold mx-0.5">m</span>`;
+        return `<span class="text-3xl font-bold ${colorClass}">${str}</span>`;
     };
 
     const createChartCard = (title, statsArray, chartConfigBuilder) => {
@@ -61,11 +60,12 @@ export function renderCharts(container, analyticsData) {
 
 
     // ==========================================
-    // 1. TODAY'S DYNAMIC GRADUAL TIMELINE
+    // 1. TODAY'S 100-SLICE DYNAMIC TIMELINE
     // ==========================================
     let labels = [];
     let scheduleData = [];
     let actualData = [];
+    let blackoutData = [];
 
     if (m && analyticsData && analyticsData.today) {
         const parseMins = (str) => {
@@ -77,21 +77,26 @@ export function renderCharts(container, analyticsData) {
         const photoMins = m.photoperiod * 60;
         const endMins = startMins + photoMins;
         
-        const paddingMins = photoMins * (15 / 70); 
-        const graphStart = startMins - paddingMins;
-        const graphEnd = endMins + paddingMins;
+        const graphStartMins = startMins - 120; 
+        const graphEndMins = endMins + 120; 
 
         const now = new Date();
-        const currentMinsOfDay = (now.getHours() * 60) + now.getMinutes();
-        const awakeHistory = analyticsData.today.awakeData || Array(24).fill(1); 
+        const nowMins = (now.getHours() * 60) + now.getMinutes();
+        
+        let relativeNowMins = nowMins;
+        if (endMins > 1440 && nowMins < (endMins % 1440 + 120)) {
+            relativeNowMins += 1440; 
+        }
 
-        // Generate data points every 5 minutes
-        for (let t = graphStart; t <= graphEnd; t += 5) {
+        // CRASH PREVENTER: Guarantees awakeData exists even if localStorage is corrupt
+        const hourlyGraph = analyticsData.today.hourlyGraph || Array(24).fill(0);
+        const awakeHistory = analyticsData.today.awakeData || Array(24).fill(1);
+
+        for (let t = graphStartMins; t <= graphEndMins; t += 5) {
             let normalizedT = (t + 1440) % 1440; 
             let h = Math.floor(normalizedT / 60);
             let min = Math.floor(normalizedT % 60);
             
-            // X-Axis Labels: Show an hour marker every 2 hours (like Aqua Fish)
             if (min === 0 && h % 2 === 0) {
                 let ampm = h >= 12 ? 'PM' : 'AM';
                 let dispH = h % 12 || 12;
@@ -100,23 +105,30 @@ export function renderCharts(container, analyticsData) {
                 labels.push('');
             }
             
-            // 1. Plot the Grey Schedule Track
             let isSched = (endMins > 1440) 
                 ? (normalizedT >= startMins || normalizedT <= (endMins % 1440))
                 : (normalizedT >= startMins && normalizedT <= endMins);
             scheduleData.push(isSched ? 1 : 0);
             
-            // 2. Plot the Live Cyan Fill
-            if (t > currentMinsOfDay && !(endMins > 1440 && t < graphEnd)) {
-                actualData.push(null); // The future is null, which reveals the grey track beneath!
+            if (t > relativeNowMins && !(endMins > 1440 && t < graphEndMins)) {
+                actualData.push(null); 
+                blackoutData.push(null);
             } else {
                 let isActuallyOn = false;
+                let isBlackout = false;
+
                 if (h === now.getHours()) {
-                    isActuallyOn = device.metrics.isLightOn; // Live instant response
+                    isActuallyOn = device.metrics.isLightOn;
                 } else {
-                    isActuallyOn = analyticsData.today.hourlyGraph[h] > 0; // Past hourly history
+                    isActuallyOn = hourlyGraph[h] > 0;
                 }
+
+                if (isSched && !isActuallyOn && awakeHistory[h] === 0) {
+                    isBlackout = true;
+                }
+
                 actualData.push(isActuallyOn ? 1 : 0);
+                blackoutData.push(isBlackout ? 1 : 0);
             }
         }
     }
@@ -135,36 +147,29 @@ export function renderCharts(container, analyticsData) {
                     {
                         label: 'Schedule Target',
                         data: scheduleData,
-                        borderColor: '#374151', // Grey-700
                         borderWidth: 2,
                         stepped: 'middle',
-                        fill: false,
-                        pointRadius: 0
+                        pointRadius: 0,
+                        // Fixes the invisible bottom line clutter
+                        segment: { borderColor: (ctx) => (ctx.p0.parsed.y === 1 || ctx.p1.parsed.y === 1) ? '#374151' : 'transparent' }
                     },
                     {
                         label: 'Actual Progress',
                         data: actualData,
                         borderWidth: 3,
                         stepped: 'middle',
-                        fill: false, // Solid stepped line, no fill underneath to match screenshot
                         pointRadius: 0,
-                        // 🔥 DYNAMIC SEGMENT LOGIC
-                        segment: {
-                            borderColor: (ctx) => {
-                                const i = ctx.p0DataIndex;
-                                if (scheduleData[i] === 1 && actualData[i] === 0) {
-                                    // It should be ON, but it's OFF. Check if power was out.
-                                    let normalizedT = (graphStart + i * 5);
-                                    normalizedT = (normalizedT + 1440) % 1440;
-                                    let h = Math.floor(normalizedT / 60);
-                                    // If awakeData for this hour is 0, it was a blackout -> Paint it RED
-                                    if (analyticsData.today.awakeData && analyticsData.today.awakeData[h] === 0) return '#ef4444'; 
-                                    return '#374151'; // Otherwise, it was manually turned off -> Paint it GREY
-                                }
-                                if (actualData[i] === 1) return '#00f2fe'; // Running normally -> Paint it CYAN
-                                return 'transparent'; 
-                            }
-                        }
+                        // 🔥 THE INVISIBLE LINE FIX: Colors the rising/falling edges so even a single 5-minute slice shows up instantly!
+                        segment: { borderColor: (ctx) => (ctx.p0.parsed.y === 1 || ctx.p1.parsed.y === 1) ? '#00f2fe' : 'transparent' }
+                    },
+                    {
+                        label: 'Load Shedding',
+                        data: blackoutData,
+                        borderWidth: 3,
+                        stepped: 'middle',
+                        pointRadius: 0,
+                        // Renders Red outages beautifully
+                        segment: { borderColor: (ctx) => (ctx.p0.parsed.y === 1 || ctx.p1.parsed.y === 1) ? '#ef4444' : 'transparent' }
                     }
                 ]
             },
@@ -218,8 +223,8 @@ export function renderCharts(container, analyticsData) {
                     pointBackgroundColor: '#121212', 
                     pointBorderColor: '#00f2fe',     
                     pointBorderWidth: 2,
-                    pointRadius: 5,
-                    pointHoverRadius: 7
+                    pointRadius: 4,
+                    pointHoverRadius: 6
                 }]
             },
             options: {
