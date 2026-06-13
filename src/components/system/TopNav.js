@@ -1,5 +1,8 @@
 // src/components/system/TopNav.js
-// ... (keep your imports the same)
+
+import { DeviceStore } from '../../state.js';
+import { renderAboutModal } from './AboutModal.js';
+import { renderPairingWizard, renderEmptyState } from './PairingWizard.js';
 
 export function initTopNav() {
     const slot = document.getElementById("slot-top-nav");
@@ -24,18 +27,66 @@ export function initTopNav() {
     const formatHwidDisplay = (id) => {
         if (!id) return "";
         let cleanId = id.toUpperCase();
-        // Force the dash and grab exactly 10 characters (AQUA-XXXXX)
         if (cleanId.startsWith("AQUA-")) return cleanId.substring(0, 10);
         if (cleanId.startsWith("AQUA")) return "AQUA-" + cleanId.substring(4, 9);
         return cleanId.substring(0, 10); 
     };
 
+    // 🔥 RESTORED: The full HTML for the Top Navigation Bar
     slot.innerHTML = `
         <div class="pointer-events-auto w-full max-w-[1200px] bg-cardbg border border-gray-700/50 shadow-md rounded-2xl px-4 py-3 flex justify-between items-center transition-colors duration-300">
+            <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 bg-gradient-to-br from-aqua to-blue-600 rounded-lg flex items-center justify-center shadow-[0_0_10px_rgba(0,242,254,0.3)]">
+                    <span class="text-sm">🌊</span>
+                </div>
+                <div class="flex flex-col justify-center">
+                    <h1 class="text-white font-bold tracking-wider uppercase text-sm leading-tight">AquaSync</h1>
+                    <span class="text-[8px] text-aqua font-bold tracking-widest uppercase">Ecosystem</span>
+                </div>
             </div>
+
+            <div class="flex items-center space-x-3 text-gray-400">
+                <button id="btn-theme-toggle" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 transition-colors active:scale-95 group">
+                    <svg id="icon-sun" class="w-4 h-4 ${savedTheme === 'dark' ? 'block' : 'hidden'} group-hover:text-amber-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                    <svg id="icon-moon" class="w-4 h-4 ${savedTheme === 'light' ? 'block' : 'hidden'} group-hover:text-aqua transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                </button>
+                
+                <button id="btn-nav-info" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 transition-colors border border-gray-700 active:scale-95">
+                    <span class="text-xs font-bold">i</span>
+                </button>
+                
+                <div class="flex items-center justify-center w-6 h-6 ml-1 relative">
+                    <div class="relative flex h-2.5 w-2.5 items-center justify-center">
+                        <span id="ui-top-ping" class="absolute inline-flex h-full w-full rounded-full opacity-75 hidden"></span>
+                        <span id="ui-top-dot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-gray-500 transition-colors duration-300"></span>
+                    </div>
+                    <div id="ui-status-spinner" class="hidden absolute w-4 h-4 border-2 border-aqua border-t-transparent rounded-full animate-spin"></div>
+                    
+                    <div id="ui-status-check" class="hidden absolute text-aqua flex items-center justify-center">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div class="pointer-events-auto w-full max-w-[1200px] bg-cardbg/90 backdrop-blur-xl border border-gray-700/50 shadow-md rounded-2xl relative mt-3 transition-colors duration-300">
             
+            <div id="device-dropdown-trigger" class="px-4 py-3 flex justify-between items-center cursor-pointer active:bg-gray-800/50 rounded-2xl transition-colors">
+                <div class="flex items-center space-x-3">
+                    <span class="text-2xl drop-shadow-md">🐠</span>
+                    <div class="flex flex-col">
+                        <span class="text-[9px] text-gray-500 uppercase tracking-widest font-bold">Active Device</span>
+                        <span id="ui-active-name" class="text-white font-bold text-sm tracking-wide">${activeDevice.name}</span>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <span id="ui-active-model" class="text-[9px] text-aqua bg-aqua/10 border border-aqua/20 px-2 py-1 rounded-full font-bold tracking-widest uppercase">${activeDevice.model}</span>
+                    <span id="dropdown-arrow" class="text-gray-500 transition-transform duration-300">▼</span>
+                </div>
+            </div>
+
             <div id="device-dropdown-menu" class="hidden absolute top-[110%] left-0 w-full bg-cardbg border border-gray-700/50 shadow-2xl rounded-2xl p-3 z-[250] flex-col space-y-2 transition-colors duration-300">
                 ${Object.values(allDevices).map(dev => `
                     <div class="bg-cardbg border border-gray-700/50 rounded-xl p-3 flex justify-between items-center ${dev.hwid === activeDevice.hwid ? 'border-aqua/50 bg-aqua/5' : ''} transition-colors duration-300">
