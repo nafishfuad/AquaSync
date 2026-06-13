@@ -21,7 +21,6 @@ private:
     TankSettings _shadow; 
     bool _shadowInit = false;
 
-    // --- Master Plan Timers ---
     unsigned long _lastFirebasePull = 0;
     unsigned long _lastHeartbeat = 0;
     unsigned long _lastAnalyticsPush = 0;
@@ -118,7 +117,7 @@ private:
             }
         }
 
-        if (changes == 0 && _shadowInit) return ""; // Nothing changed, cancel transmission!
+        if (changes == 0 && _shadowInit) return ""; 
 
         _shadowInit = true;
         String out;
@@ -126,9 +125,6 @@ private:
         return out;
     }
 
-    // ---------------------------------------------------------
-    // TIER 3: HEARTBEAT (Tiny Payload)
-    // ---------------------------------------------------------
     String generateHeartbeatJson() {
         JsonDocument doc;
         TankSettings& s = _settingsMgr.get(); 
@@ -166,8 +162,6 @@ private:
         if (!_server.hasArg("plain")) { _server.send(400, "application/json", "{\"error\":\"Missing payload\"}"); return; }
 
         String rawPayload = _server.arg("plain");
-        Serial.printf("\n[%s] 🌐 [LOCAL WIFI] Received Payload:\n%s\n", getLogTime().c_str(), rawPayload.c_str());
-
         JsonDocument doc;
         if (deserializeJson(doc, rawPayload)) { _server.send(400, "application/json", "{\"error\":\"Malformed JSON\"}"); return; }
 
@@ -194,8 +188,6 @@ private:
         if (_settingsMgr.updateFromJson(doc.as<JsonObject>())) {
             _hwEngine.execute(_settingsMgr.get(), true, false);
             _lastCommandReceivedTime = millis();
-            
-            // Generate standard response without delta tracking to local Web App
             _server.send(200, "application/json", "{\"status\":\"success\"}"); 
         } else {
             _server.send(400, "application/json", "{\"status\":\"rejected_version\"}");
@@ -251,31 +243,25 @@ public:
         client.setInsecure();
         HTTPClient http;
 
-        // 🔥 PHASE 1: OFFLINE RESOLUTION & BOOT SYNC 
+        // PHASE 1: OFFLINE RESOLUTION & BOOT SYNC 
         if (!_hasFetchedInitialConfig) {
             bool offlineChangesExist = _settingsMgr.needsFirebaseSync();
-
-            Serial.println("[SYS] 🔄 Checking Cloud State...");
             http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
             
             if (http.GET() == 200) {
-                if (offlineChangesExist) {
-                    Serial.println("[SYS] 📡 Offline physical button presses detected! Forcing Cloud to accept Local reality.");
-                } else {
+                if (!offlineChangesExist) {
                     JsonDocument doc;
                     deserializeJson(doc, http.getString());
                     _settingsMgr.updateFromJson(doc.as<JsonObject>());
-                    _settingsMgr.clearFirebaseSync(); // Clear flag so we don't instantly bounce it back
-                    Serial.println("[SYS] ☁️ Synced with Cloud successfully.");
+                    _settingsMgr.clearFirebaseSync(); 
                 }
             }
             http.end();
-            
             _hasFetchedInitialConfig = true;
-            _shadowInit = false; // By forcing false, we mathematically guarantee the ESP pushes a 100% full structural sync on Boot
+            _shadowInit = false; // Forces full structural sync on boot
         }
 
-        // 🔥 PHASE 2: 15-SECOND COMMAND POLL & OTA INTERCEPTOR
+        // PHASE 2: COMMAND POLL & OTA
         if (now - _lastFirebasePull > 15000) {
             _lastFirebasePull = now;
             String cmdUrl = FIREBASE_URL + "/devices/" + _hwid + "/commands.json";
@@ -287,6 +273,14 @@ public:
                     JsonDocument cmdDoc;
                     if (!deserializeJson(cmdDoc, cmdPayload)) {
                         
+                        // 🔥 THE GHOST UPDATE FIX
+                        if (cmdDoc.containsKey("ota_staged") && cmdDoc["ota_staged"].as<bool>() == false) {
+                            http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
+                            http.addHeader("Content-Type", "application/json");
+                            http.PATCH("{\"ota_staged\": false}");
+                            http.end();
+                        }
+
                         if (cmdDoc.containsKey("command")) {
                             String cmd = cmdDoc["command"].as<String>();
                             http.end(); 
@@ -314,24 +308,15 @@ public:
                                 String version = cmdDoc["version"].as<String>(); 
                                 
                                 if (targetModel == DEVICE_MODEL) {
-                                    String secureBaseUrl = "https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware/";
-                                    String fullDownloadUrl = secureBaseUrl + targetModel + "_" + version + ".bin";
-
-                                    Serial.println("\n[OTA] 🚀 Downloading Firmware: " + fullDownloadUrl);
+                                    String fullDownloadUrl = "https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware/" + targetModel + "_" + version + ".bin";
                                     WiFiClientSecure otaClient;
                                     otaClient.setInsecure();
-                                    
                                     httpUpdate.rebootOnUpdate(false); 
-                                    t_httpUpdate_return ret = httpUpdate.update(otaClient, fullDownloadUrl);
-                                    
-                                    if (ret == HTTP_UPDATE_OK) {
-                                        Serial.println("[OTA] ✅ SUCCESS! Staged in memory. Awaiting reboot.");
+                                    if (httpUpdate.update(otaClient, fullDownloadUrl) == HTTP_UPDATE_OK) {
                                         http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
                                         http.addHeader("Content-Type", "application/json");
                                         http.PATCH("{\"ota_staged\": true}");
                                         http.end();
-                                    } else {
-                                        Serial.printf("[OTA] ❌ FAILED. Code: %d\n", httpUpdate.getLastError());
                                     }
                                 }
                             }
@@ -350,7 +335,7 @@ public:
             http.end();
         }
 
-        // 🔥 PHASE 3: 1-MIN HEARTBEAT 
+        // PHASE 3: HEARTBEAT
         if (now - _lastHeartbeat > 60000) {
             _lastHeartbeat = now;
             http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
@@ -359,16 +344,12 @@ public:
             http.end();
         }
 
-        // 🔥 PHASE 4: THE UNIVERSAL DELTA ENGINE
-        // Triggers 5 seconds after a setting changes, OR every 1 hour for analytics
+        // PHASE 4: UNIVERSAL DELTA ENGINE
         bool isDebouncedPush = (_settingsMgr.needsFirebaseSync() && (now - _lastCommandReceivedTime > 5000)); 
         bool isHourlyPush = (now - _lastAnalyticsPush > 3600000);
 
         if (!_shadowInit || isDebouncedPush || isHourlyPush) {
-            
-            // Clone shadow in case HTTP fails so we don't accidentally skip data next time
             TankSettings backupShadow = _shadow; 
-            
             String deltaJson = generateDeltaStateJson();
 
             if (deltaJson != "") {
@@ -378,15 +359,12 @@ public:
                 http.end();
 
                 if (response > 0) {
-                    // Success! Reset triggers.
                     if (isDebouncedPush) _settingsMgr.clearFirebaseSync(); 
                     if (isHourlyPush) _lastAnalyticsPush = now;
                 } else {
-                    // Failure! Revert the shadow so it tries sending the delta again next time
                     _shadow = backupShadow; 
                 }
             } else {
-                // Nothing changed mathematically, so don't waste network traffic!
                 if (isDebouncedPush) _settingsMgr.clearFirebaseSync();
                 if (isHourlyPush) _lastAnalyticsPush = now;
             }

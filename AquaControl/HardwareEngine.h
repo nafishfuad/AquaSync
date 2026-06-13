@@ -43,7 +43,7 @@ private:
         _prefs.putBytes("actMins", settings.activeMinutesToday, sizeof(settings.activeMinutesToday));
         _prefs.putBytes("awkMins", settings.awakeMinutesToday, sizeof(settings.awakeMinutesToday));
         
-        // 🔥 CRITICAL FIX: Save both 30-day history arrays to NVS Flash!
+        // 🔥 CRITICAL FIX: Ensure 30-day History Arrays are written to Flash
         _prefs.putBytes("actHist", settings.activeMinutesHistory, sizeof(settings.activeMinutesHistory));
         _prefs.putBytes("awkHist", settings.awakeMinutesHistory, sizeof(settings.awakeMinutesHistory));
         
@@ -134,10 +134,12 @@ public:
     bool _isMaintenanceMode = false;
 
     void begin() {
+        // Higher PWM for perfectly smooth LED dimming
         analogWriteResolution(PIN_LIGHT, 8);
-        analogWriteFrequency(PIN_LIGHT, 200);
+        analogWriteFrequency(PIN_LIGHT, 5000); 
         analogWriteResolution(PIN_FAN, 8);
-        analogWriteFrequency(PIN_FAN, 200);
+        analogWriteFrequency(PIN_FAN, 5000);
+        
         pinMode(PIN_CO2, OUTPUT);
         pinMode(PIN_RELAY, OUTPUT);
         pinMode(PIN_LED, OUTPUT);
@@ -200,10 +202,11 @@ public:
             _hasBooted = true;
             _prefs.getBytes("actMins", settings.activeMinutesToday, sizeof(settings.activeMinutesToday));
             _prefs.getBytes("awkMins", settings.awakeMinutesToday, sizeof(settings.awakeMinutesToday));
-            // 🔥 NEW: Load the history from Flash when the tank boots up
+            
+            // 🔥 CRITICAL FIX: Load History on Boot
             _prefs.getBytes("actHist", settings.activeMinutesHistory, sizeof(settings.activeMinutesHistory));
             _prefs.getBytes("awkHist", settings.awakeMinutesHistory, sizeof(settings.awakeMinutesHistory));
-
+            
             settings.totalLoadSheddingToday = _prefs.getInt("totLS", 0);
             settings.lightLoadSheddingToday = _prefs.getInt("lgtLS", 0);
             settings.lastTrackedDay = _prefs.getInt("lastDay", 0);
@@ -253,10 +256,9 @@ public:
         if (timeValid && (nowMillis - _lastBreadcrumbTick >= 60000)) {
             _lastBreadcrumbTick = nowMillis;
             _prefs.putLong("last_time", (long)nowTime);
-            
             if (settings.lastTrackedDay != 0 && settings.lastTrackedDay != timeinfo->tm_mday) {
                 
-                // 🔥 NEW: Shift BOTH history arrays down by 1
+                // 🔥 CRITICAL FIX: Shift BOTH history arrays down by 1 Day
                 for (int i = 29; i > 0; i--) {
                     settings.activeMinutesHistory[i] = settings.activeMinutesHistory[i-1];
                     settings.awakeMinutesHistory[i] = settings.awakeMinutesHistory[i-1];
@@ -266,14 +268,13 @@ public:
                 uint16_t yAwake = 0;
                 for(int i=0; i<24; i++) { 
                     yTotal += settings.activeMinutesToday[i]; 
-                    yAwake += settings.awakeMinutesToday[i]; 
+                    yAwake += settings.awakeMinutesToday[i];
                     settings.activeMinutesToday[i] = 0; 
                     settings.awakeMinutesToday[i] = 0; 
                 }
                 
                 settings.activeMinutesHistory[0] = yTotal;
-                settings.awakeMinutesHistory[0] = yAwake; // Store yesterday's grid uptime
-                
+                settings.awakeMinutesHistory[0] = yAwake;
                 settings.totalLoadSheddingToday = 0; 
                 settings.lightLoadSheddingToday = 0;
                 settings.lastTrackedDay = timeinfo->tm_mday;
@@ -281,11 +282,12 @@ public:
             } else if (settings.lastTrackedDay == 0) {
                 settings.lastTrackedDay = timeinfo->tm_mday;
             }
+            
             settings.awakeMinutesToday[timeinfo->tm_hour] += 1;
             if (settings.isLightOn) settings.activeMinutesToday[timeinfo->tm_hour] += 1;
         }
 
-        // 🔥 MASTER PLAN: 1 HOUR NVS SAVE (3600000ms)
+        // 1 HOUR NVS SAVE
         if (timeValid && (nowMillis - _lastAnalyticsSaveTick >= 3600000)) {
             _lastAnalyticsSaveTick = nowMillis;
             saveAnalyticsVault(settings);

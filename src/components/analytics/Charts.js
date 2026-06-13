@@ -18,7 +18,10 @@ export function renderCharts(container, analyticsData) {
   Chart.defaults.plugins.legend.display = false;
 
   const styleTimeStr = (str, colorClass = "text-white") => {
-    const match = str.match(/(\d{2})h (\d{2})m/);
+    // 🔥 FATAL CRASH FIX: Protect against undefined/null data from old memory
+    if (!str) str = "00h 00m"; 
+    
+    const match = String(str).match(/(\d{2})h (\d{2})m/);
     if (match)
       return `<div class="whitespace-nowrap"><span class="text-2xl font-bold ${colorClass} tracking-tight">${match[1]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">h</span><span class="text-2xl font-bold ${colorClass} tracking-tight">${match[2]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">m</span></div>`;
     return `<div class="whitespace-nowrap text-2xl font-bold ${colorClass}">${str}</div>`;
@@ -82,8 +85,9 @@ export function renderCharts(container, analyticsData) {
 
   if (m && analyticsData && analyticsData.today) {
     const parseMins = (str) => {
-      let [h, min] = str.split(":");
-      return parseInt(h) * 60 + parseInt(min);
+      if (!str) return 0;
+      let [h, min] = String(str).split(":");
+      return parseInt(h || 0) * 60 + parseInt(min || 0);
     };
 
     const startMins = parseMins(m.startTime);
@@ -126,7 +130,6 @@ export function renderCharts(container, analyticsData) {
       let isActuallyOn = false;
       let isBlackout = false;
 
-      // 🔥 THE FIX: Highly precise math to segment the line color
       if (!isFuture && isSched) {
         let schedStartMin = (h === Math.floor(startMins / 60)) ? (startMins % 60) : 0;
         
@@ -151,8 +154,8 @@ export function renderCharts(container, analyticsData) {
       let sliceColor = isLightMode ? "#cbd5e1" : "#374151";
       if (y === 1) {
         if (isFuture) sliceColor = isLightMode ? "#cbd5e1" : "#374151";
-        else if (isActuallyOn) sliceColor = "#00f2fe"; // 🔵 Blue for active
-        else if (isBlackout) sliceColor = "#ef4444";   // 🔴 Red for outage
+        else if (isActuallyOn) sliceColor = "#00f2fe"; 
+        else if (isBlackout) sliceColor = "#ef4444";   
         else sliceColor = isLightMode ? "#cbd5e1" : "#374151";
       }
       segmentColors.push(sliceColor);
@@ -169,9 +172,9 @@ export function renderCharts(container, analyticsData) {
       },
       {
         label: "Load Shedding",
-        value: analyticsData.today.loadShedding,
+        value: analyticsData.today.loadShedding || "00h 00m",
         color: "text-red-500",
-        onClick: `window.showOutageModal('Power Outage', 'Today\\'s Report', '${analyticsData.today.totalBlackout || "00h 00m"}', '${analyticsData.today.loadShedding}')`,
+        onClick: `window.showOutageModal('Power Outage', 'Today\\'s Report', '${analyticsData.today.totalBlackout || "00h 00m"}', '${analyticsData.today.loadShedding || "00h 00m"}')`,
       },
     ],
     (ctx) => ({
@@ -232,7 +235,7 @@ export function renderCharts(container, analyticsData) {
   );
 
   // ==========================================
-  // 2. 7-DAY GRAPH (Restored)
+  // 2. 7-DAY GRAPH 
   // ==========================================
   const getLast7DaysLabels = () => {
     const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -257,9 +260,9 @@ export function renderCharts(container, analyticsData) {
       },
       {
         label: "Load Shedding",
-        value: analyticsData.week.loadShedding,
+        value: analyticsData.week.loadShedding || "00h 00m",
         color: "text-red-500",
-        onClick: `window.showOutageModal('Power Outage', '7-Day Report', '${analyticsData.week.totalBlackout || "00h 00m"}', '${analyticsData.week.loadShedding}')`,
+        onClick: `window.showOutageModal('Power Outage', '7-Day Report', '${analyticsData.week.totalBlackout || "00h 00m"}', '${analyticsData.week.loadShedding || "00h 00m"}')`,
       },
     ],
     (ctx) => ({
@@ -315,9 +318,9 @@ export function renderCharts(container, analyticsData) {
       },
       {
         label: "Load Shedding",
-        value: analyticsData.month.loadShedding,
+        value: analyticsData.month.loadShedding || "00h 00m",
         color: "text-red-500",
-        onClick: `window.showOutageModal('Power Outage', '30-Day Report', '${analyticsData.month.totalBlackout || "00h 00m"}', '${analyticsData.month.loadShedding}')`,
+        onClick: `window.showOutageModal('Power Outage', '30-Day Report', '${analyticsData.month.totalBlackout || "00h 00m"}', '${analyticsData.month.loadShedding || "00h 00m"}')`,
       },
     ],
     (ctx) => ({
