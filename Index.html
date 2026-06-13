@@ -134,10 +134,15 @@
     </div>
 
     <template id="tpl-insights-overview">
-      <div class="bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800">
+      <div class="bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800 transition-colors duration-300">
         <div class="flex justify-between items-center mb-4">
           <h2 class="text-sm uppercase text-gray-400 font-semibold tracking-wide">Today's Overview</h2>
-          <div class="h-2.5 w-2.5 rounded-full bg-aqua shadow-[0_0_8px_#00f2fe]"></div>
+          
+          <div class="relative flex h-2.5 w-2.5 items-center justify-center">
+              <span id="ui-overview-ping" class="absolute inline-flex h-full w-full rounded-full opacity-75 hidden"></span>
+              <span id="ui-overview-dot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-gray-500 transition-colors duration-300"></span>
+          </div>
+          
         </div>
         
         <div class="grid gap-x-4 gap-y-6 pb-6 border-b border-gray-800/40 tpl-status-grid"></div>
