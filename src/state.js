@@ -20,7 +20,7 @@ export const DeviceStore = {
                     
                     // Safety check to ensure existing devices get the new companion object
                     if (!dev.companion) {
-                        dev.companion = { current: "v2.0.5", latest: "Checking...", downloadUrl: "" };
+                        dev.companion = { current: "v2.0.0", latest: "Checking...", downloadUrl: "" };
                     }
                     if (dev.analyticsData && dev.analyticsData.today) {
                         if (!dev.analyticsData.today.awakeData) {

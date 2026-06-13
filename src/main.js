@@ -107,7 +107,7 @@ const AquaSync = {
         // 🔥 THE FIX: Allow it to retry if the previous fetch failed and returned "Unknown"
         if (device.firmware.latest === "Checking..." || device.firmware.latest === "Unknown") {
             try {
-                const fullManifestReq = await fetch("https://raw.githubusercontent.com/nafishfuad/Aqua-Fish/main/firmware.json?t=" + Date.now());
+                const fullManifestReq = await fetch("https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware.json?t=" + Date.now());
                 if (fullManifestReq.ok) {
                     const fullManifest = await fullManifestReq.json();
                     

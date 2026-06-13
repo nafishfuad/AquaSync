@@ -157,7 +157,7 @@ export const API = {
     async checkLatestFirmware(model) {
         try {
             // Append timestamp to bust the browser cache
-            const response = await fetch("https://raw.githubusercontent.com/nafishfuad/Aqua-Fish/main/firmware.json?t=" + Date.now());
+            const response = await fetch("https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware.json?t=" + Date.now());
             if (!response.ok) return null;
             
             const data = await response.json();

@@ -28,7 +28,7 @@ export function renderCompanionApp(container, device) {
 
     div.querySelector('#btn-download-app').onclick = () => {
         // Use the URL from the manifest, or fallback to the GitHub releases page
-        window.open(dlUrl || "https://github.com/nafishfuad/Aqua-Fish/releases/latest", "_blank"); 
+        window.open(dlUrl || "https://github.com/nafishfuad/AquaSync/releases/latest", "_blank"); 
     };
 
     container.appendChild(div);
