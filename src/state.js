@@ -20,7 +20,7 @@ export const DeviceStore = {
                     
                     // Safety check to ensure existing devices get the new companion object
                     if (!dev.companion) {
-                        dev.companion = { current: "v2.0.0", latest: "Checking...", downloadUrl: "" };
+                        dev.companion = { current: "v2.0.5", latest: "Checking...", downloadUrl: "" };
                     }
                     if (dev.analyticsData && dev.analyticsData.today) {
                         if (!dev.analyticsData.today.awakeData) {
@@ -96,6 +96,11 @@ export const DeviceStore = {
 
     updateDeviceState(hwid, newMetrics, newCapabilities = null) {
         if (!this.devices[hwid] || !newMetrics) return;
+
+        // 🔥 THE FIX: Extract the true firmware version if the ESP32 sent it!
+        if (newMetrics.fw_version) {
+            this.devices[hwid].firmware.current = newMetrics.fw_version;
+        }
         
         // 1. Secure Merge: Combine incoming Firebase data with existing Local Storage data
         this.devices[hwid].metrics = { ...this.devices[hwid].metrics, ...newMetrics };

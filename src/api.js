@@ -25,21 +25,24 @@ export const API = {
     async syncDevice(device) {
         const now = Date.now();
         let useCloud = false;
+        let localData = null;
+        let finalSource = "cloud";
 
         // 1. Evaluate Circuit Breaker
         if (now < forceCloudUntil || !device.localIP) {
             useCloud = true;
         }
 
-        // 2. Attempt Local Network Sync
+        // 2. Attempt Local Network Sync (Fast UI State)
         if (!useCloud) {
             try {
-                const response = await fetchWithTimeout(`http://${device.localIP}/info`);
+                // Keep timeout very short (2s) so we don't lag the UI if the local network is congested
+                const response = await fetchWithTimeout(`http://${device.localIP}/info`, {}, 2000);
                 if (!response.ok) throw new Error("Local HTTP Error");
                 
-                const data = await response.json();
+                localData = await response.json();
                 localFailCount = 0; // Reset breaker on success
-                return { source: "local", data };
+                finalSource = "local";
             } catch (err) {
                 localFailCount++;
                 if (localFailCount >= 3) {
@@ -49,22 +52,32 @@ export const API = {
             }
         }
 
-        // 3. Fallback to Cloud (Firebase)
+        // 3. ALWAYS Pull from Cloud (For Heavy Analytics Arrays)
         try {
             const response = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/state.json?t=${Date.now()}`);
             if (!response.ok) throw new Error("Cloud HTTP Error");
             
-            const data = await response.json();
+            const cloudData = await response.json();
             
             // 🔥 THE PHANTOM SHIELD
-            if (data === null) {
+            if (cloudData === null) {
                 console.warn("[API] Firebase returned a phantom null state. Ignoring to protect UI.");
+                // If cloud is phantom, but we have local data, return local to keep UI alive
+                if (localData) return { source: finalSource, data: localData }; 
                 throw new Error("Phantom State Detected");
             }
             
-            return { source: "cloud", data };
+            // 🔥 THE HYBRID MERGE
+            // We layer the instant Local Data ON TOP OF the heavy Cloud Data.
+            // This ensures buttons are 100% live, but graphs are populated!
+            const mergedData = localData ? { ...cloudData, ...localData } : cloudData;
+            
+            return { source: finalSource, data: mergedData };
+            
         } catch (err) {
-            console.error("[API] Both Local and Cloud sync failed or returned invalid data.");
+            console.error("[API] Cloud sync failed or returned invalid data.");
+            // Offline fallback: If Firebase fails (no internet) but we are on Local WiFi, keep the UI alive!
+            if (localData) return { source: finalSource, data: localData };
             return null; 
         }
     },
