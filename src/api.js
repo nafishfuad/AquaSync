@@ -56,10 +56,7 @@ export const API = {
             
             const data = await response.json();
             
-            // 🔥 THE PHANTOM SHIELD: 
-            // If Firebase returns null (because the ESP32 briefly cleared the commands folder 
-            // but hasn't uploaded the state yet), we THROW an error to prevent the main app 
-            // from deleting the device from the UI!
+            // 🔥 THE PHANTOM SHIELD
             if (data === null) {
                 console.warn("[API] Firebase returned a phantom null state. Ignoring to protect UI.");
                 throw new Error("Phantom State Detected");
@@ -68,7 +65,7 @@ export const API = {
             return { source: "cloud", data };
         } catch (err) {
             console.error("[API] Both Local and Cloud sync failed or returned invalid data.");
-            return null; // The main app loop will interpret this as a sync failure, not a deletion command.
+            return null; 
         }
     },
 
@@ -85,7 +82,6 @@ export const API = {
     },
 
     async sendCommand(device, payload) {
-        // Tag payload with schema version and our Timestamp Shield (ts)
         const commandWrapper = {
             v: 2,
             ts: Math.floor(Date.now() / 1000),
@@ -104,7 +100,6 @@ export const API = {
                 });
                 
                 if (res.ok) {
-                    // Capture the instant JSON state reply from the ESP32!
                     const returnedData = await res.json();
                     return { success: true, source: "local", returnedState: returnedData };
                 }
@@ -142,6 +137,21 @@ export const API = {
         } catch (err) {
             console.warn("[API] Provisioning connection dropped (Likely rebooting).");
             return true; 
+        }
+    },
+
+    // 🔥 NEW: OTA Manifest Fetcher
+    async checkLatestFirmware(model) {
+        try {
+            // Append timestamp to bust the browser cache
+            const response = await fetch("https://raw.githubusercontent.com/nafishfuad/Aqua-Fish/main/firmware.json?t=" + Date.now());
+            if (!response.ok) return null;
+            
+            const data = await response.json();
+            return data[model] || null; 
+        } catch (err) {
+            console.error("[API] Failed to fetch OTA manifest from GitHub.", err);
+            return null;
         }
     }
 };

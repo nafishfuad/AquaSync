@@ -44,7 +44,17 @@ export function initTopNav() {
                 <button id="btn-nav-info" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 transition-colors border border-gray-700 active:scale-95">
                     <span class="text-xs font-bold">i</span>
                 </button>
-                <button id="ui-connection-status" class="w-2.5 h-2.5 rounded-full bg-gray-500 ml-2 transition-colors duration-300"></button>
+                
+                <div class="flex items-center justify-center w-6 h-6 ml-1 relative">
+                    <div id="ui-connection-status" class="w-2.5 h-2.5 rounded-full bg-gray-500 transition-colors duration-300 absolute"></div>
+                    <div id="ui-status-dot" class="w-full h-full absolute z-10"></div> <div id="ui-status-spinner" class="hidden absolute w-4 h-4 border-2 border-aqua border-t-transparent rounded-full animate-spin"></div>
+                    
+                    <div id="ui-status-check" class="hidden absolute text-aqua flex items-center justify-center">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                    </div>
+                </div>
             </div>
         </div>
 

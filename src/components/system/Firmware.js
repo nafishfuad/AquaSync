@@ -1,17 +1,19 @@
 // src/components/system/Firmware.js
 
+import { DeviceStore } from '../../state.js'; // Needed to grab the exact device model
+
 export function renderFirmware(container, fwState, commandHook) {
     const div = document.createElement('div');
     div.className = "bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800";
     
     // Determine update logic
-    const isUpdateAvailable = (fwState.current !== fwState.latest) && (fwState.latest !== "Checking...");
-    const statusText = isUpdateAvailable ? "New firmware found! Ready to download." : "Your device is up to date.";
+    const isUpdateAvailable = (fwState.current !== fwState.latest) && (fwState.latest !== "Checking..." && fwState.latest !== "Unknown");
+    const statusText = isUpdateAvailable ? "New firmware found! Ready to install." : "Your device is up to date.";
     const statusColor = isUpdateAvailable ? "text-green-400" : "text-gray-500";
     
     // Styling for active vs disabled buttons
-    const btnDlStyle = isUpdateAvailable 
-        ? "bg-aqua/10 text-aqua border-aqua/50 hover:bg-aqua hover:text-black shadow-[0_0_15px_rgba(0,242,254,0.15)]" 
+    const btnStyle = isUpdateAvailable 
+        ? "bg-aqua/10 text-aqua border-aqua/50 hover:bg-aqua hover:text-black shadow-[0_0_15px_rgba(0,242,254,0.15)] cursor-pointer" 
         : "bg-[#121212] text-gray-600 border-gray-800 opacity-50 cursor-not-allowed";
 
     div.innerHTML = `
@@ -26,50 +28,49 @@ export function renderFirmware(container, fwState, commandHook) {
             ${statusText}
         </p>
 
-        <div class="space-y-3">
-            <button id="btn-fw-dl" ${!isUpdateAvailable ? 'disabled' : ''} class="w-full ${btnDlStyle} font-bold py-3.5 rounded-xl border text-[10px] uppercase tracking-widest transition-all active:scale-95">
-                1. Download Update
-            </button>
-            <button id="btn-fw-install" disabled class="w-full bg-[#121212] text-gray-600 border border-gray-800 opacity-50 font-bold py-3.5 rounded-xl text-[10px] uppercase tracking-widest transition-all">
-                2. Install & Reboot
-            </button>
-        </div>
+        <button id="btn-fw-execute" ${!isUpdateAvailable ? 'disabled' : ''} class="w-full ${btnStyle} font-bold py-3.5 rounded-xl border text-[10px] uppercase tracking-widest transition-all active:scale-95">
+            Download & Install Update
+        </button>
     `;
 
-    const btnDl = div.querySelector('#btn-fw-dl');
-    const btnInstall = div.querySelector('#btn-fw-install');
+    const btnExecute = div.querySelector('#btn-fw-execute');
     const statusTxt = div.querySelector('#txt-fw-status');
 
-    if (btnDl && isUpdateAvailable) {
-        btnDl.onclick = () => {
-            if (confirm("Begin OTA firmware download? Do not close the app.")) {
-                btnDl.innerHTML = `<span class="animate-spin inline-block mr-2">⏳</span> Downloading...`;
-                btnDl.classList.add("opacity-50", "pointer-events-none");
+    if (btnExecute && isUpdateAvailable) {
+        btnExecute.onclick = () => {
+            if (confirm("Begin OTA firmware update? The device will pull the update directly from the cloud and reboot automatically.")) {
                 
-                statusTxt.innerText = "Downloading to device memory... (~20 seconds)";
+                // 1. Lock the UI
+                btnExecute.innerHTML = `<span class="animate-spin inline-block mr-2">⏳</span> Instructing Device...`;
+                btnExecute.classList.add("opacity-50", "pointer-events-none");
+                
+                statusTxt.innerText = "Connecting to ESP32...";
                 statusTxt.classList.replace("text-green-400", "text-amber-400");
 
-                commandHook({ command: "download_ota" });
+                // Grab the model for verification
+                const activeModel = DeviceStore.getActiveDevice()?.model || "AS-Standard";
 
-                // Simulate unlocking the install button after a set time (in reality, API would trigger this)
+                // 2. Fire the Universal Payload!
+                commandHook({ 
+                    command: "execute_ota",
+                    device_model: activeModel,
+                    version: fwState.latest,
+                    firmware_url: fwState.downloadUrl
+                });
+
+                // 3. UI Animation Sequence
                 setTimeout(() => {
-                    btnDl.innerHTML = `✅ Download Verified`;
-                    statusTxt.innerText = "Download complete! Ready to install.";
-                    statusTxt.classList.replace("text-amber-400", "text-green-400");
-                    
-                    btnInstall.disabled = false;
-                    btnInstall.className = "w-full bg-green-500/10 text-green-400 border border-green-500/50 hover:bg-green-500 hover:text-black shadow-[0_0_15px_rgba(74,222,128,0.15)] font-bold py-3.5 rounded-xl text-[10px] uppercase tracking-widest transition-all active:scale-95";
-                }, 15000); 
-            }
-        };
-    }
+                    statusTxt.innerText = "The ESP32 is currently downloading and installing the file...";
+                }, 2000);
 
-    if (btnInstall) {
-        btnInstall.onclick = () => {
-            if (confirm("Install firmware? The device will reboot and may take 30 seconds to reconnect.")) {
-                btnInstall.innerHTML = `<span class="animate-spin inline-block mr-2">⏳</span> Installing...`;
-                btnInstall.classList.add("opacity-50", "pointer-events-none");
-                commandHook({ command: "install_ota" });
+                setTimeout(() => {
+                    btnExecute.innerHTML = `✅ Update Sent`;
+                    statusTxt.innerText = "Installation command sent. Waiting for device to reboot and reconnect... (Auto-reloading in 15s)";
+                    statusTxt.classList.replace("text-amber-400", "text-aqua");
+                    
+                    // 4. Force a page reload after 15 seconds to fetch the new version from the ESP32
+                    setTimeout(() => window.location.reload(), 15000);
+                }, 7000); 
             }
         };
     }

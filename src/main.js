@@ -65,7 +65,9 @@ const AquaSync = {
         }
     },
 
+
     setConnectionStatus(status) {
+        // We will keep the global status dot for offline/cloud/local indication
         const dot = document.getElementById("ui-connection-status");
         if (!dot) return;
         dot.className = "w-3 h-3 rounded-full transition-colors duration-300 ";
@@ -74,9 +76,47 @@ const AquaSync = {
         else dot.className += "bg-red-500";
     },
 
+    // 🔥 NEW: Top Nav Sync Animation Controller
+    updateSyncStatus(state) {
+        const dot = document.getElementById("ui-status-dot");
+        const spin = document.getElementById("ui-status-spinner");
+        const check = document.getElementById("ui-status-check");
+        if (!dot || !spin || !check) return; 
+
+        // Hide all icons first
+        [dot, spin, check].forEach(el => el.classList.add('hidden'));
+
+        if (state === 'syncing') {
+            spin.classList.remove('hidden');
+        } else if (state === 'success') {
+            check.classList.remove('hidden');
+            // Revert back to the dot after 5 seconds of showing the checkmark
+            setTimeout(() => {
+                if (!spin.classList.contains('hidden') === false) { // Only revert if not currently syncing something else
+                    this.updateSyncStatus('idle');
+                }
+            }, 5000);
+        } else {
+            dot.classList.remove('hidden');
+        }
+    },
+
     async runSyncLoop() {
         const device = DeviceStore.getActiveDevice();
         if (!device) return;
+
+        // 🔥 NEW: Check GitHub for latest firmware silently in the background
+        if (device.firmware.latest === "Checking...") {
+            const latestFw = await API.checkLatestFirmware(device.model);
+            if (latestFw) {
+                device.firmware.latest = latestFw.version;
+                device.firmware.downloadUrl = latestFw.firmware_url;
+                DeviceStore.save();
+                this.renderActiveUI(); // Force UI to redraw with the new version text
+            } else {
+                device.firmware.latest = "Unknown"; // Failsafe if GitHub is unreachable
+            }
+        }
 
         const response = await API.syncDevice(device);
         
@@ -103,33 +143,51 @@ const AquaSync = {
         const device = DeviceStore.getActiveDevice();
         if (!device) return;
 
+        // 🔥 TIER 2: BATCH DATA (5-Second Quiet Window for Schedules/Sliders)
         const debouncedNetworkSend = debounce(async (targetDevice, payload) => {
             const res = await API.sendCommand(targetDevice, payload);
-            if (res && res.returnedState) {
-                DeviceStore.updateDeviceState(targetDevice.hwid, res.returnedState);
-                AquaSync.renderActiveUI(); // 🔥 FIX: Tell the UI to redraw after slider release!
+            if (res && res.success) {
+                AquaSync.updateSyncStatus('success'); // Show Blue Checkmark
+                if (res.returnedState) {
+                    DeviceStore.updateDeviceState(targetDevice.hwid, res.returnedState);
+                    AquaSync.renderActiveUI(); 
+                }
+            } else {
+                AquaSync.updateSyncStatus('idle');
             }
-        }, 300);
+        }, 5000); // 5000ms = 5 Seconds
 
+        // 🔥 THE MASTER COMMAND HOOK (Handles Optimistic UI)
+        // fastUI = true -> Batch Data (Sliders/Inputs)
+        // fastUI = false -> Quick Data (Buttons)
         const commandHook = async (payload, fastUI = false) => {
             
-            // 1. Light overrides CO2 (Visual Sync for the UI in Manual Mode)
-            // If the user turns the light on/off, and they are linked, make sure CO2 follows!
+            // Link Light and CO2 visually if they are not separated
             if ((payload.hasOwnProperty("isLightOn") || payload.hasOwnProperty("currentBrightness")) && !device.metrics.isCO2ScheduleSeparate) {
                 payload.isCO2On = payload.hasOwnProperty("isLightOn") ? payload.isLightOn : (payload.currentBrightness > 0);
             }
 
-            // Instantly update the Local Cache
+            // OPTIMISTIC UI: Update the Local Cache instantly and redraw!
             DeviceStore.updateDeviceState(device.hwid, payload);
+            AquaSync.renderActiveUI(); 
+
+            // Trigger the loading spinner in the Nav Bar
+            AquaSync.updateSyncStatus('syncing');
 
             if (!fastUI) {
-                AquaSync.renderActiveUI(); 
+                // TIER 1: QUICK DATA (Execute Immediately)
                 const res = await API.sendCommand(device, payload);
-                if (res && res.returnedState) {
-                    DeviceStore.updateDeviceState(device.hwid, res.returnedState);
-                    AquaSync.renderActiveUI(); 
+                if (res && res.success) {
+                    AquaSync.updateSyncStatus('success'); // Show Blue Checkmark
+                    if (res.returnedState) {
+                        DeviceStore.updateDeviceState(device.hwid, res.returnedState);
+                        AquaSync.renderActiveUI(); 
+                    }
+                } else {
+                    AquaSync.updateSyncStatus('idle');
                 }
             } else {
+                // TIER 2: BATCH DATA (Send to 5-Second Timer)
                 debouncedNetworkSend(device, payload);
             }
         };
