@@ -24,7 +24,7 @@ export function initTopNav() {
     }
 
     slot.innerHTML = `
-        <div class="pointer-events-auto w-full max-w-[1200px] bg-[#121212] border border-gray-800 shadow-md rounded-2xl px-4 py-3 flex justify-between items-center transition-colors duration-300">
+        <div class="pointer-events-auto w-full max-w-[1200px] bg-cardbg border border-gray-800 shadow-md rounded-2xl px-4 py-3 flex justify-between items-center transition-colors duration-300">
             <div class="flex items-center space-x-3">
                 <div class="w-8 h-8 bg-gradient-to-br from-aqua to-blue-600 rounded-lg flex items-center justify-center shadow-[0_0_10px_rgba(0,242,254,0.3)]">
                     <span class="text-sm">🌊</span>
@@ -76,7 +76,7 @@ export function initTopNav() {
 
             <div id="device-dropdown-menu" class="hidden absolute top-[110%] left-0 w-full bg-[#1a1a1a] border border-gray-700 shadow-2xl rounded-2xl p-3 z-[250] flex-col space-y-2 transition-colors duration-300">
                 ${Object.values(allDevices).map(dev => `
-                    <div class="bg-[#121212] border border-gray-800 rounded-xl p-3 flex justify-between items-center ${dev.hwid === activeDevice.hwid ? 'border-aqua/50 bg-aqua/5' : ''} transition-colors duration-300">
+                    <div class="bg-cardbg border border-gray-800 rounded-xl p-3 flex justify-between items-center ${dev.hwid === activeDevice.hwid ? 'border-aqua/50 bg-aqua/5' : ''} transition-colors duration-300">
                         <div class="flex items-center space-x-3">
                             <span class="text-xl">🐠</span>
                             <div class="flex flex-col">

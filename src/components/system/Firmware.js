@@ -1,29 +1,29 @@
 // src/components/system/Firmware.js
 
-import { DeviceStore } from '../../state.js'; 
+import { DeviceStore } from '../../state.js';
 
 export function renderFirmware(container, fwState, commandHook) {
     const div = document.createElement('div');
     div.className = "bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800";
-    
+
     // Grab the active device to check the ESP32's staging status
     const activeDevice = DeviceStore.getActiveDevice();
     const isStaged = activeDevice?.metrics?.ota_staged === true;
-    
+
     // Determine update logic
     const isUpdateAvailable = (fwState.current !== fwState.latest) && (fwState.latest !== "Checking..." && fwState.latest !== "Unknown");
-    
+
     let statusText = isUpdateAvailable ? "New firmware found! Ready to download." : "Your device is up to date.";
     let statusColor = isUpdateAvailable ? "text-amber-400" : "text-gray-500";
-    
+
     if (isStaged) {
         statusText = "Download verified and staged in memory. Ready to install.";
         statusColor = "text-green-400";
     }
 
     // Button Styling (2-Step Flow)
-    const btnDlStyle = (!isStaged && isUpdateAvailable) 
-        ? "bg-aqua/10 text-aqua border-aqua/50 hover:bg-aqua hover:text-black shadow-[0_0_15px_rgba(0,242,254,0.15)] cursor-pointer" 
+    const btnDlStyle = (!isStaged && isUpdateAvailable)
+        ? "bg-aqua/10 text-aqua border-aqua/50 hover:bg-aqua hover:text-black shadow-[0_0_15px_rgba(0,242,254,0.15)] cursor-pointer"
         : "bg-[#121212] text-gray-600 border-gray-800 opacity-50 cursor-not-allowed";
 
     const btnInstallStyle = isStaged
@@ -60,20 +60,20 @@ export function renderFirmware(container, fwState, commandHook) {
     if (btnDl && !isStaged && isUpdateAvailable) {
         btnDl.onclick = () => {
             if (confirm("Begin OTA firmware download? The device will pull the update from the cloud.")) {
-                
+
                 // Lock the Download button
                 btnDl.innerHTML = `<span class="animate-spin inline-block mr-2">⏳</span> Downloading...`;
                 btnDl.classList.add("opacity-50", "pointer-events-none");
-                
+
                 statusTxt.innerText = "Downloading and flashing to secondary partition... (~30 seconds)";
                 statusTxt.classList.replace("text-amber-400", "text-aqua");
 
                 // Send the payload to the ESP32
-                commandHook({ 
+                commandHook({
                     command: "download_ota",
                     device_model: activeDevice.model || "AS-Standard",
-                    version: fwState.latest,
-                    firmware_url: fwState.downloadUrl
+                    version: fwState.latest
+                    // Removed: firmware_url: fwState.downloadUrl
                 });
 
                 // The UI will automatically unlock the Install button on the next Firebase sync 
@@ -86,16 +86,16 @@ export function renderFirmware(container, fwState, commandHook) {
     if (btnInstall && isStaged) {
         btnInstall.onclick = () => {
             if (confirm("Install firmware? The device will reboot to apply the new system.")) {
-                
+
                 // Lock the Install button
                 btnInstall.innerHTML = `<span class="animate-spin inline-block mr-2">⏳</span> Installing...`;
                 btnInstall.classList.add("opacity-50", "pointer-events-none");
-                
+
                 statusTxt.innerText = "Rebooting into new firmware... Please wait.";
-                
+
                 // Send the reboot command to swap the partitions
                 commandHook({ command: "reboot" });
-                
+
                 // Force a page reload after 15 seconds so the UI fetches the new version number
                 setTimeout(() => window.location.reload(), 15000);
             }

@@ -117,9 +117,12 @@ export const DeviceStore = {
             const awake = mergedMetrics.awakeData || Array(24).fill(1);
             const daily = mergedMetrics.dailyData || Array(30).fill(0);
 
-            let todayTotal = hourly.reduce((a, b) => a + b, 0);
+            // 🔥 LIVE TIME FIX: Use the exact integer from the ESP32 if available
+            let todayTotal = mergedMetrics.liveActiveMins !== undefined 
+                ? mergedMetrics.liveActiveMins 
+                : hourly.reduce((a, b) => a + b, 0);
             
-            // 🔥 LIVE SYNTHETIC MINUTES: UI injection for instant feedback
+            // 🔥 LIVE SYNTHETIC MINUTES: UI injection for instant feedback on boot
             if (mergedMetrics.isLightOn && todayTotal === 0) {
                 todayTotal = new Date().getMinutes(); 
             }

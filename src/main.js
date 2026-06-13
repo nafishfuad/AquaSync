@@ -133,12 +133,22 @@ const AquaSync = {
         const response = await API.syncDevice(device);
         
         if (response && response.data) {
-            this.setConnectionStatus(response.source);
+            
+            // 🔥 OFFLINE GHOST FIX: Check the Heartbeat Timestamp
+            const nowSecs = Math.floor(Date.now() / 1000);
+            const lastBeat = response.data.lastHeartbeatTs || nowSecs;
+            const timeSinceLastBeat = nowSecs - lastBeat;
+
+            // If pulling from cloud and heartbeat is older than 1 mins (60s), it's dead
+            if (response.source === "cloud" && timeSinceLastBeat > 60) {
+                this.setConnectionStatus("offline");
+            } else {
+                this.setConnectionStatus(response.source);
+            }
             
             if (response.data.localIP && response.data.localIP !== device.localIP) {
                 DeviceStore.updateNetwork(device.hwid, response.data.localIP, true);
             }
-
             if (response.data.capabilities) {
                 DeviceStore.updateDeviceState(device.hwid, response.data, response.data.capabilities);
             } else {
