@@ -1,7 +1,6 @@
 {
   "AS-Standard": {
-    "version": "v4.0.0",
-    "firmware_url": "https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware/AS-Standard_v2.0.1.bin"
+    "version": "v4.0.0"
   },
   "CompanionApp": {
     "version": "v2.0.0",
