@@ -1,7 +1,10 @@
 {
   "AS-Standard": {
     "version": "v2.0.1",
-    "release_notes": "Added 5-second UI debounce and 1-hour flash memory protection.",
     "firmware_url": "https://raw.githubusercontent.com/nafishfuad/Aqua-Fish/main/firmware/AS-Standard_v2.0.1.bin"
+  },
+  "CompanionApp": {
+    "version": "v2.0.5",
+    "download_url": "https://github.com/nafishfuad/Aqua-Fish/releases/latest"
   }
 }

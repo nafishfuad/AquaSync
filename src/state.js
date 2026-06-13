@@ -17,6 +17,11 @@ export const DeviceStore = {
                 this.devices = JSON.parse(storedData);
                 for (let hwid in this.devices) {
                     let dev = this.devices[hwid];
+                    
+                    // Safety check to ensure existing devices get the new companion object
+                    if (!dev.companion) {
+                        dev.companion = { current: "v2.0.0", latest: "Checking...", downloadUrl: "" };
+                    }
                     if (dev.analyticsData && dev.analyticsData.today) {
                         if (!dev.analyticsData.today.awakeData) {
                             dev.analyticsData.today.awakeData = Array(24).fill(1);
@@ -38,7 +43,8 @@ export const DeviceStore = {
         this.devices[hwid] = {
             hwid: hwid, name: name, model: model, localIP: null,
             network: { isWiFiConnected: false, ssid: "Disconnected" },
-            firmware: { current: "v2.0.0", latest: "Checking..." },
+            firmware: { current: "v2.0.0", latest: "Checking...", downloadUrl: "" },
+            companion: { current: "v2.0.0", latest: "Checking...", downloadUrl: "" },
             capabilities: { hasLight: true, hasCO2: true, hasFan: true, hasColorSpectrum: true },
             metrics: {
                 isAutoMode: true, isLightOn: false, isCO2On: false, isFanOn: false, isFanEnabled: false,
@@ -91,40 +97,50 @@ export const DeviceStore = {
     updateDeviceState(hwid, newMetrics, newCapabilities = null) {
         if (!this.devices[hwid] || !newMetrics) return;
         
+        // 1. Secure Merge: Combine incoming Firebase data with existing Local Storage data
         this.devices[hwid].metrics = { ...this.devices[hwid].metrics, ...newMetrics };
         if (newMetrics.deviceName) this.devices[hwid].name = newMetrics.deviceName;
 
-        if (newMetrics.hourlyData && newMetrics.dailyData && newMetrics.awakeData) {
-            let todayTotal = newMetrics.hourlyData.reduce((a, b) => a + b, 0);
+        // 2. Extract the merged metrics to guarantee we always have data for the graphs
+        const mergedMetrics = this.devices[hwid].metrics;
+
+        // 3. Process Analytics safely using fallbacks if the ESP32 hasn't sent them yet
+        if (mergedMetrics.hourlyData || mergedMetrics.dailyData) {
             
-            // 🔥 LIVE SYNTHETIC MINUTES: If the light is ON but the ESP32 hasn't synced the array yet, 
-            // inject the live minutes of the current hour so the UI reacts instantly!
-            if (newMetrics.isLightOn && todayTotal === 0) {
+            // Fallback to arrays of zeros if data is temporarily missing
+            const hourly = mergedMetrics.hourlyData || Array(24).fill(0);
+            const awake = mergedMetrics.awakeData || Array(24).fill(1);
+            const daily = mergedMetrics.dailyData || Array(30).fill(0);
+
+            let todayTotal = hourly.reduce((a, b) => a + b, 0);
+            
+            // 🔥 LIVE SYNTHETIC MINUTES: UI injection for instant feedback
+            if (mergedMetrics.isLightOn && todayTotal === 0) {
                 todayTotal = new Date().getMinutes(); 
             }
             
-            const activeHistoryWeek = newMetrics.dailyData.slice(0, 6).filter(mins => mins > 0).length;
-            const activeHistoryMonth = newMetrics.dailyData.slice(0, 29).filter(mins => mins > 0).length;
+            const activeHistoryWeek = daily.slice(0, 6).filter(mins => mins > 0).length;
+            const activeHistoryMonth = daily.slice(0, 29).filter(mins => mins > 0).length;
 
             const weekDivisor = Math.max(1, activeHistoryWeek + (todayTotal > 0 ? 1 : 0));
             const monthDivisor = Math.max(1, activeHistoryMonth + (todayTotal > 0 ? 1 : 0));
 
-            const weekTotal = newMetrics.dailyData.slice(0, 6).reduce((a, b) => a + b, 0) + todayTotal;
-            const monthTotal = newMetrics.dailyData.slice(0, 29).reduce((a, b) => a + b, 0) + todayTotal;
+            const weekTotal = daily.slice(0, 6).reduce((a, b) => a + b, 0) + todayTotal;
+            const monthTotal = daily.slice(0, 29).reduce((a, b) => a + b, 0) + todayTotal;
 
-            const lightOutageMins = newMetrics.lightLoadSheddingToday || 0;
-            const totalOutageMins = newMetrics.totalLoadSheddingToday || 0;
+            const lightOutageMins = mergedMetrics.lightLoadSheddingToday || 0;
+            const totalOutageMins = mergedMetrics.totalLoadSheddingToday || 0;
 
-            const weekGraphData = [...newMetrics.dailyData.slice(0, 6).reverse(), todayTotal].map(m => Number((m / 60).toFixed(2)));
-            const monthGraphData = [...newMetrics.dailyData.slice(0, 29).reverse(), todayTotal].map(m => Number((m / 60).toFixed(2)));
+            const weekGraphData = [...daily.slice(0, 6).reverse(), todayTotal].map(m => Number((m / 60).toFixed(2)));
+            const monthGraphData = [...daily.slice(0, 29).reverse(), todayTotal].map(m => Number((m / 60).toFixed(2)));
 
             this.devices[hwid].analyticsData = {
                 today: { 
                     totalActive: formatTime(todayTotal), 
                     loadShedding: formatTime(lightOutageMins), 
                     totalBlackout: formatTime(totalOutageMins), 
-                    hourlyGraph: newMetrics.hourlyData,
-                    awakeData: newMetrics.awakeData 
+                    hourlyGraph: hourly,
+                    awakeData: awake 
                 },
                 week: { 
                     totalActive: formatTime(weekTotal), 
@@ -141,7 +157,11 @@ export const DeviceStore = {
             };
         }
         
-        if (newCapabilities) this.devices[hwid].capabilities = { ...this.devices[hwid].capabilities, ...newCapabilities };
+        if (newCapabilities) {
+            this.devices[hwid].capabilities = { ...this.devices[hwid].capabilities, ...newCapabilities };
+        }
+        
+        // 4. Save the freshly calculated graphs permanently to browser Local Storage
         this.save();
     },
 

@@ -1,12 +1,13 @@
 // src/components/system/Companion.js
 
-export function renderCompanionApp(container) {
+export function renderCompanionApp(container, device) {
     const div = document.createElement('div');
     div.className = "bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800";
     
-    // In reality, you'd fetch this from a manifest, but we'll mock it based on your UI
-    const currentAppVer = "v2.0.0";
-    const latestAppVer = "v2.0.0";
+    // Read directly from the fetched manifest state
+    const currentAppVer = device.companion?.current || "v2.0.0";
+    const latestAppVer = device.companion?.latest || "Unknown";
+    const dlUrl = device.companion?.downloadUrl || "";
 
     div.innerHTML = `
         <h2 class="text-sm uppercase text-gray-400 font-semibold tracking-wide mb-4">Companion App</h2>
@@ -26,8 +27,8 @@ export function renderCompanionApp(container) {
     `;
 
     div.querySelector('#btn-download-app').onclick = () => {
-        // Replace with your actual APK download URL
-        window.open("https://github.com/nafishfuad/Aqua-Fish/releases/latest", "_blank"); 
+        // Use the URL from the manifest, or fallback to the GitHub releases page
+        window.open(dlUrl || "https://github.com/nafishfuad/Aqua-Fish/releases/latest", "_blank"); 
     };
 
     container.appendChild(div);

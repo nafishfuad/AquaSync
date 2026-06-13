@@ -93,23 +93,23 @@ export function buildSystemPanel(device, apiReference, commandHook) {
 
     systemSlot.innerHTML = "";
 
-    // 1. Connection Status
+    // 1. Connection Status (Global Cloud / Local)
     renderConnection(systemSlot, device.network, () => {
         if (confirm("Reset Wi-Fi stack? The controller will drop back to local hotspot configuration.")) {
             apiReference.sendCommand(device, { command: "forget_wifi" });
         }
     });
 
-    // 2. Companion App Promo
-    renderCompanionApp(systemSlot);
-
-    // 3. Firmware Management
-    renderFirmware(systemSlot, device.firmware, (otaPayload) => {
-        apiReference.sendCommand(device, otaPayload);
-    });
-
-    // 4. Low-Level System Actions
+    // 2. Low-Level System Actions (Maintenance moved up under Connection)
     renderMaintenance(systemSlot, (systemPayload) => {
         apiReference.sendCommand(device, systemPayload);
+    });
+
+    // 3. Companion App Promo (Passes 'device' to read dynamic manifest versions)
+    renderCompanionApp(systemSlot, device);
+
+    // 4. Firmware Management
+    renderFirmware(systemSlot, device.firmware, (otaPayload) => {
+        apiReference.sendCommand(device, otaPayload);
     });
 }

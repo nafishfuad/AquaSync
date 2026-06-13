@@ -65,7 +65,6 @@ const AquaSync = {
         }
     },
 
-
     setConnectionStatus(status) {
         // We will keep the global status dot for offline/cloud/local indication
         const dot = document.getElementById("ui-connection-status");
@@ -105,16 +104,29 @@ const AquaSync = {
         const device = DeviceStore.getActiveDevice();
         if (!device) return;
 
-        // 🔥 NEW: Check GitHub for latest firmware silently in the background
+        // 🔥 FULL MANIFEST FETCHER (Handles both Firmware and Companion App)
         if (device.firmware.latest === "Checking...") {
-            const latestFw = await API.checkLatestFirmware(device.model);
-            if (latestFw) {
-                device.firmware.latest = latestFw.version;
-                device.firmware.downloadUrl = latestFw.firmware_url;
+            try {
+                const fullManifestReq = await fetch("https://raw.githubusercontent.com/nafishfuad/Aqua-Fish/main/firmware.json?t=" + Date.now());
+                if (fullManifestReq.ok) {
+                    const fullManifest = await fullManifestReq.json();
+                    
+                    device.firmware.latest = fullManifest[device.model]?.version || "Unknown";
+                    device.firmware.downloadUrl = fullManifest[device.model]?.firmware_url || "";
+                    
+                    device.companion.latest = fullManifest["CompanionApp"]?.version || "Unknown";
+                    device.companion.downloadUrl = fullManifest["CompanionApp"]?.download_url || "";
+                    
+                    DeviceStore.save();
+                    this.renderActiveUI();
+                } else {
+                    throw new Error("Manifest not OK");
+                }
+            } catch (e) {
+                device.firmware.latest = "Unknown";
+                device.companion.latest = "Unknown";
                 DeviceStore.save();
-                this.renderActiveUI(); // Force UI to redraw with the new version text
-            } else {
-                device.firmware.latest = "Unknown"; // Failsafe if GitHub is unreachable
+                this.renderActiveUI();
             }
         }
 
