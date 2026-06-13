@@ -20,13 +20,12 @@ export function initTopNav() {
         return;
     }
 
-    // 🔥 NEW: Helper to perfectly format the HWID for the UI
+    // 🔥 NEW: Truncates the HWID dynamically for the UI
     const formatHwidDisplay = (id) => {
         if (!id) return "";
         let cleanId = id.toUpperCase();
-        // If it already has the dash, just grab the first 10 characters max
+        // Force the dash and grab exactly 10 characters (AQUA-XXXXX)
         if (cleanId.startsWith("AQUA-")) return cleanId.substring(0, 10);
-        // If it's missing the dash (like AQUA70AF0...), format it properly
         if (cleanId.startsWith("AQUA")) return "AQUA-" + cleanId.substring(4, 9);
         return cleanId.substring(0, 10); 
     };
