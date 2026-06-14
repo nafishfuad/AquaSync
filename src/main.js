@@ -6,6 +6,7 @@ import { buildInsightsPanel, buildControlPanel, buildSystemPanel, buildColorPane
 import { renderEmptyState, renderPairingWizard } from './components/system/PairingWizard.js';
 import { initTopNav } from './components/system/TopNav.js';
 import { debounce } from './utils.js'; 
+import { showOutageModal } from './components/system/OutageModal.js'; // 🔥 NEW: Import the global modal
 
 const AquaSync = {
     async init() {
@@ -66,13 +67,47 @@ const AquaSync = {
     },
 
     setConnectionStatus(status) {
-        // We will keep the global status dot for offline/cloud/local indication
-        const dot = document.getElementById("ui-connection-status");
-        if (!dot) return;
-        dot.className = "w-3 h-3 rounded-full transition-colors duration-300 ";
-        if (status === "local") dot.className += "bg-aqua shadow-[0_0_10px_rgba(0,242,254,0.8)]";
-        else if (status === "cloud") dot.className += "bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.8)]";
-        else dot.className += "bg-red-500";
+        this.currentStatus = status;
+        
+        // --- 1. TOP NAV LOGIC (Grey, Blue Pulse, Purple Pulse) ---
+        const topPing = document.getElementById("ui-top-ping");
+        const topDot = document.getElementById("ui-top-dot");
+        
+        if (topPing && topDot) {
+            topPing.className = "absolute inline-flex h-full w-full rounded-full opacity-75";
+            topDot.className = "relative inline-flex rounded-full h-2.5 w-2.5 transition-colors duration-300";
+            
+            if (status === "local") {
+                topPing.classList.add("bg-blue-400", "animate-ping");
+                topDot.classList.add("bg-blue-500");
+            } else if (status === "cloud") {
+                topPing.classList.add("bg-purple-400", "animate-ping");
+                topDot.classList.add("bg-purple-500");
+            } else { 
+                // Offline -> Static Grey
+                topPing.classList.add("hidden"); 
+                topDot.classList.add("bg-gray-500"); 
+            }
+        }
+        
+        // --- 2. TODAY'S OVERVIEW LOGIC (Red Static, Blue Pulse) ---
+        const overviewPing = document.getElementById("ui-overview-ping");
+        const overviewDot = document.getElementById("ui-overview-dot");
+        
+        if (overviewPing && overviewDot) {
+            overviewPing.className = "absolute inline-flex h-full w-full rounded-full opacity-75";
+            overviewDot.className = "relative inline-flex rounded-full h-2.5 w-2.5 transition-colors duration-300";
+            
+            if (status === "offline") {
+                // Offline -> Static Red
+                overviewPing.classList.add("hidden"); 
+                overviewDot.classList.add("bg-red-500"); 
+            } else { 
+                // Online (Local OR Cloud) -> Blue Pulse
+                overviewPing.classList.add("bg-blue-400", "animate-ping");
+                overviewDot.classList.add("bg-blue-500");
+            }
+        }
     },
 
     // 🔥 NEW: Top Nav Sync Animation Controller
@@ -222,4 +257,7 @@ const AquaSync = {
 };
 
 window.AquaSync = AquaSync;
+// 🔥 NEW: Attach modal function globally for inline HTML onclick handlers
+window.showOutageModal = showOutageModal; 
+
 document.addEventListener("DOMContentLoaded", () => AquaSync.init());
