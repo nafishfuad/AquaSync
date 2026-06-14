@@ -24,7 +24,7 @@ export function initTopNav() {
     }
 
     slot.innerHTML = `
-        <div class="pointer-events-auto w-full max-w-[1200px] bg-cardbg border border-gray-800 shadow-md rounded-2xl px-4 py-3 flex justify-between items-center transition-colors duration-300">
+        <div class="pointer-events-auto w-full max-w-[1200px] bg-cardbg border border-gray-700/50 shadow-md rounded-2xl px-4 py-3 flex justify-between items-center transition-colors duration-300">
             <div class="flex items-center space-x-3">
                 <div class="w-8 h-8 bg-gradient-to-br from-aqua to-blue-600 rounded-lg flex items-center justify-center shadow-[0_0_10px_rgba(0,242,254,0.3)]">
                     <span class="text-sm">🌊</span>
@@ -46,14 +46,11 @@ export function initTopNav() {
                 </button>
                 
                 <div class="flex items-center justify-center w-6 h-6 ml-1 relative">
-                    <div id="ui-connection-status" class="w-2.5 h-2.5 rounded-full bg-gray-500 transition-colors duration-300 absolute"></div>
-                    <div id="ui-status-dot" class="w-full h-full absolute z-10"></div> <div id="ui-status-spinner" class="hidden absolute w-4 h-4 border-2 border-aqua border-t-transparent rounded-full animate-spin"></div>
-                    
-                    <div id="ui-status-check" class="hidden absolute text-aqua flex items-center justify-center">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
-                        </svg>
+                    <div class="relative flex h-2.5 w-2.5 items-center justify-center">
+                        <span id="ui-top-ping" class="absolute inline-flex h-full w-full rounded-full opacity-75 hidden"></span>
+                        <span id="ui-top-dot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-gray-500 transition-colors duration-300"></span>
                     </div>
+                    <div id="ui-status-spinner" class="hidden absolute w-4 h-4 border-2 border-aqua border-t-transparent rounded-full animate-spin"></div>
                 </div>
             </div>
         </div>
@@ -74,9 +71,9 @@ export function initTopNav() {
                 </div>
             </div>
 
-            <div id="device-dropdown-menu" class="hidden absolute top-[110%] left-0 w-full bg-[#1a1a1a] border border-gray-700 shadow-2xl rounded-2xl p-3 z-[250] flex-col space-y-2 transition-colors duration-300">
+            <div id="device-dropdown-menu" class="hidden absolute top-[110%] left-0 w-full bg-cardbg border border-gray-700/50 shadow-2xl rounded-2xl p-3 z-[250] flex-col space-y-2 transition-colors duration-300">
                 ${Object.values(allDevices).map(dev => `
-                    <div class="bg-cardbg border border-gray-800 rounded-xl p-3 flex justify-between items-center ${dev.hwid === activeDevice.hwid ? 'border-aqua/50 bg-aqua/5' : ''} transition-colors duration-300">
+                    <div class="bg-cardbg border border-gray-700/50 rounded-xl p-3 flex justify-between items-center ${dev.hwid === activeDevice.hwid ? 'border-aqua/50 bg-aqua/5' : ''} transition-colors duration-300">
                         <div class="flex items-center space-x-3">
                             <span class="text-xl">🐠</span>
                             <div class="flex flex-col">
@@ -93,7 +90,7 @@ export function initTopNav() {
                     </div>
                 `).join('')}
                 
-                <button id="btn-add-new-device" class="w-full bg-cardbg border border-gray-700 hover:border-gray-500 text-aqua font-bold py-3 rounded-xl text-[10px] uppercase tracking-widest transition-all active:scale-95 mt-2 flex items-center justify-center">
+                <button id="btn-add-new-device" class="w-full bg-cardbg border border-gray-700/50 hover:border-gray-500 text-aqua font-bold py-3 rounded-xl text-[10px] uppercase tracking-widest transition-all active:scale-95 mt-2 flex items-center justify-center">
                     <span class="text-lg mr-2">+</span> Add A New Device
                 </button>
             </div>
