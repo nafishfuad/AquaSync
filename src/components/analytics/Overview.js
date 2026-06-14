@@ -66,6 +66,7 @@ export function renderOverview(container, device) {
         `);
     }
 
+    // Tighter padding bottom (pb-3)
     statusGrid.className = `grid grid-cols-${statuses.length} gap-4 pb-3 border-b border-gray-800/40`;
     statusGrid.innerHTML = statuses.join('');
 
@@ -80,63 +81,38 @@ export function renderOverview(container, device) {
     clone.querySelector(".tpl-photo-val").innerHTML = styleTimeStr(`${String(m.photoperiod).padStart(2, '0')}h 00m`, "text-white");
     clone.querySelector(".tpl-recovery-val").innerHTML = styleTimeStr(`${m.recoveryMins}m`, "text-red-400");
 
+    // Tighter top padding (pt-3)
     clone.querySelector(".tpl-photo-val").parentElement.classList.add("pt-3", "border-t", "border-gray-800/40");
     clone.querySelector(".tpl-recovery-val").parentElement.classList.add("pt-3", "border-t", "border-gray-800/40");
 
-    // --- 3. The Smart Load Shedding Warning ---
+    // --- 3. The Load Shedding Warning ---
     const loadSheddingText = device.analyticsData?.today?.loadShedding || "00h 00m";
     const totalBlackoutText = device.analyticsData?.today?.totalBlackout || "00h 00m";
-    const rawTotalOutage = m.totalLoadSheddingToday || 0;
-
-    // 🔥 SMART DISMISS LOGIC: Generate a unique storage key for today and this specific tank
-    const todayDate = new Date().toDateString();
-    const ackKey = `ack_outage_${device.hwid}_${todayDate}`;
-    const ackedOutage = parseInt(localStorage.getItem(ackKey)) || 0;
-
-    // Show banner ONLY if an outage exists AND it has increased since the user last dismissed it
-    if (rawTotalOutage > 0 && rawTotalOutage > ackedOutage) {
+    
+    if (loadSheddingText !== "00h 00m" || totalBlackoutText !== "00h 00m") {
         const blackoutWarningHTML = `
-            <div class="mt-3 rounded-xl bg-red-900/10 border border-red-900/40 transition-colors flex justify-between items-stretch overflow-hidden group" id="btn-blackout-banner">
-                
-                <div class="p-4 flex-1 cursor-pointer hover:bg-red-900/10 transition-colors" id="blackout-click-area">
-                    <p class="text-[10px] font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5 mb-1">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                        Power Outage Detected
-                    </p>
-                    <div class="text-[12px] text-gray-300 font-medium flex items-center">
-                        Disrupted Light: <span class="ml-1">${styleTimeStr(loadSheddingText, "text-red-400")}</span>
+            <div class="mt-3 p-4 rounded-xl bg-red-900/10 border border-red-900/40 cursor-pointer transition-colors hover:bg-red-900/20" id="btn-blackout-modal">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-[10px] font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5 mb-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                            Power Outage Detected
+                        </p>
+                        <div class="text-[12px] text-gray-300 font-medium flex items-center">
+                            Disrupted Light: <span class="ml-1">${styleTimeStr(loadSheddingText, "text-red-400")}</span>
+                        </div>
                     </div>
+                    <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                 </div>
-                
-                <button id="btn-dismiss-outage" class="px-4 flex items-center justify-center border-l border-red-900/40 hover:bg-red-900/30 text-gray-500 hover:text-white transition-colors active:scale-95" aria-label="Dismiss">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
             </div>
         `;
 
         const dynamicRowsNode = clone.querySelector(".tpl-dynamic-rows");
         dynamicRowsNode.insertAdjacentHTML('beforebegin', blackoutWarningHTML);
 
-        // --- Handle Dismiss (The Cross Button) ---
-        const btnDismiss = clone.querySelector("#btn-dismiss-outage");
-        const bannerContainer = clone.querySelector("#btn-blackout-banner");
-        
-        btnDismiss.addEventListener("click", (e) => {
-            e.stopPropagation(); // Stop the modal from opening
-            localStorage.setItem(ackKey, rawTotalOutage); // Save current outage mins
-            bannerContainer.style.opacity = "0";
-            setTimeout(() => bannerContainer.remove(), 300); // Smooth animation out
-        });
-
-        // --- 🔥 Handle Custom Popup via Global Function ---
-        const clickArea = clone.querySelector("#blackout-click-area");
-        clickArea.addEventListener("click", () => {
-            window.showOutageModal(
-                "Power Outage", 
-                "Today's Report", 
-                totalBlackoutText, 
-                loadSheddingText
-            );
+        const btnBlackout = clone.querySelector("#btn-blackout-modal");
+        btnBlackout.addEventListener("click", () => {
+            alert(`🔌 TOTAL HOUSE OUTAGE: ${totalBlackoutText}\n☀️ LOST LIGHT SCHEDULE: ${loadSheddingText}`);
         });
     }
 
@@ -144,6 +120,7 @@ export function renderOverview(container, device) {
     const dynamicRows = clone.querySelector(".tpl-dynamic-rows");
     let rowsHTML = "";
 
+    // Tighter margins and paddings (mt-3 / pt-3)
     if (cap.hasCO2 && m.isCO2ScheduleSeparate) {
         rowsHTML += `
             <div class="grid grid-cols-2 gap-4 mt-3">
