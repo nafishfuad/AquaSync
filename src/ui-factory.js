@@ -29,10 +29,7 @@ export function buildInsightsPanel(device) {
     overviewSlot.innerHTML = "";
     chartsSlot.innerHTML = "";
 
-    // Render the overview grid (Light/CO2 statuses, photoperiod values)
     renderOverview(overviewSlot, device);
-
-    // Render the historical trends (Today's Hourly Activity line, 7-Day & 30-Day charts)
     renderCharts(chartsSlot, device.analyticsData);
 }
 
@@ -48,10 +45,7 @@ export function buildControlPanel(device, commandHook) {
     primaryCardSlot.innerHTML = "";
     scheduleSlot.innerHTML = "";
 
-    // 1. Render the Unified Top Box (Banner, Grid, and Dimmer)
     renderPrimaryControlCard(primaryCardSlot, device, commandHook);
-
-    // 2. Render Consolidated Schedule Cards
     renderSchedulesStack(scheduleSlot, device, commandHook);
 }
 
@@ -71,16 +65,28 @@ export function buildColorPanel(device, commandHook) {
 
     const colorTabButton = document.getElementById("nav-page-color");
 
-    // Capabilities Enforcement: If hardware says no color mix support, hide the tab entirely
     if (!device.capabilities.hasColorSpectrum) {
         if (colorTabButton) colorTabButton.classList.add("hidden");
         return;
     }
     if (colorTabButton) colorTabButton.classList.remove("hidden");
 
-    // Render the complete color configuration interface
-    renderColorSpectrum(previewSlot, presetsSlot, manualMixSlot, device.metrics.colorSpectrum, (newSpectrum) => {
-        commandHook({ colorSpectrum: newSpectrum });
+    // 🔥 THE FIX: Reconstruct the flat color variables into the object ColorMixer expects
+    const currentSpectrumObj = {
+        w: device.metrics.colorW || 100,
+        r: device.metrics.colorR || 100,
+        g: device.metrics.colorG || 100,
+        b: device.metrics.colorB || 100
+    };
+
+    renderColorSpectrum(previewSlot, presetsSlot, manualMixSlot, currentSpectrumObj, (newSpectrum) => {
+        // Break the object back down into flat metrics for the command hook
+        commandHook({ 
+            colorW: newSpectrum.w, 
+            colorR: newSpectrum.r, 
+            colorG: newSpectrum.g, 
+            colorB: newSpectrum.b 
+        });
     });
 }
 
@@ -93,22 +99,18 @@ export function buildSystemPanel(device, apiReference, commandHook) {
 
     systemSlot.innerHTML = "";
 
-    // 1. Connection Status (Global Cloud / Local)
     renderConnection(systemSlot, device.network, () => {
         if (confirm("Reset Wi-Fi stack? The controller will drop back to local hotspot configuration.")) {
             apiReference.sendCommand(device, { command: "forget_wifi" });
         }
     });
 
-    // 2. Low-Level System Actions (Maintenance moved up under Connection)
     renderMaintenance(systemSlot, (systemPayload) => {
         apiReference.sendCommand(device, systemPayload);
     });
 
-    // 3. Companion App Promo (Passes 'device' to read dynamic manifest versions)
     renderCompanionApp(systemSlot, device);
 
-    // 4. Firmware Management
     renderFirmware(systemSlot, device.firmware, (otaPayload) => {
         apiReference.sendCommand(device, otaPayload);
     });
