@@ -109,8 +109,16 @@ public:
                     while(millis() - flashStart < 3000) _hw.handleLEDs(); 
                     
                     Preferences p; 
-                    p.begin("aqua-ctrl", false); p.clear(); p.end();
-                    p.begin("aqua-tracker", false); p.clear(); p.end();
+                    p.begin("aqua-ctrl", false); 
+                    p.clear(); 
+                    // 🔥 THE DEATH RATTLE FLAG: Tell the next boot sequence to nuke the Cloud lock
+                    p.putBool("nuke_cloud", true); 
+                    p.end();
+                    
+                    p.begin("aqua-tracker", false); 
+                    p.clear(); 
+                    p.end();
+                    
                     ESP.restart();
                 } 
                 else if (holdDuration >= 3000) {

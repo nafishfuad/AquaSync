@@ -2,17 +2,23 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
     <title>AquaSync Ecosystem</title>
 
     <link rel="manifest" href="./manifest.json" />
     <meta name="theme-color" content="#00f2fe" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script> 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
     <script>
       tailwind.config = {
         theme: {
@@ -33,135 +39,337 @@
         --bg-card-rgb: 30, 30, 30;
       }
 
-      body { transition: background-color 0.4s ease, color 0.4s ease; }
-      ::-webkit-scrollbar { display: none; }
-      .custom-scrollbar::-webkit-scrollbar { width: 4px; display: block; }
-      .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #4b5563; border-radius: 10px; }
+      body {
+        transition:
+          background-color 0.4s ease,
+          color 0.4s ease;
+      }
+      ::-webkit-scrollbar {
+        display: none;
+      }
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+        display: block;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background-color: #4b5563;
+        border-radius: 10px;
+      }
 
       /* 🔥 LIGHT THEME: Modern, Minimalistic, High Contrast */
       body.light-theme {
         --bg-deep-rgb: 248, 250, 252; /* Tailwind slate-50 */
         --bg-card-rgb: 255, 255, 255; /* Pure white cards */
       }
-      
+
       /* High Contrast Text */
-      body.light-theme .text-white { color: #0f172a !important; } /* Deep Slate 900 */
-      body.light-theme .text-gray-200 { color: #1e293b !important; } 
-      body.light-theme .text-gray-300 { color: #334155 !important; }
-      body.light-theme .text-gray-400 { color: #475569 !important; }
-      body.light-theme .text-gray-500 { color: #64748b !important; }
-      
+      body.light-theme .text-white {
+        color: #0f172a !important;
+      } /* Deep Slate 900 */
+      body.light-theme .text-gray-200 {
+        color: #1e293b !important;
+      }
+      body.light-theme .text-gray-300 {
+        color: #334155 !important;
+      }
+      body.light-theme .text-gray-400 {
+        color: #475569 !important;
+      }
+      body.light-theme .text-gray-500 {
+        color: #64748b !important;
+      }
+
       /* High Contrast Accents */
-      body.light-theme .text-aqua { color: #0284c7 !important; } /* Sky 600 */
-      body.light-theme .text-amber-400 { color: #d97706 !important; } /* Amber 600 */
-      body.light-theme .text-green-400 { color: #16a34a !important; } /* Green 600 */
-      body.light-theme .text-blue-400 { color: #2563eb !important; } /* Blue 600 */
-      body.light-theme .text-red-400 { color: #dc2626 !important; } /* Red 600 */
-      body.light-theme .text-purple-400 { color: #9333ea !important; } /* Purple 600 */
+      body.light-theme .text-aqua {
+        color: #0284c7 !important;
+      } /* Sky 600 */
+      body.light-theme .text-amber-400 {
+        color: #d97706 !important;
+      } /* Amber 600 */
+      body.light-theme .text-green-400 {
+        color: #16a34a !important;
+      } /* Green 600 */
+      body.light-theme .text-blue-400 {
+        color: #2563eb !important;
+      } /* Blue 600 */
+      body.light-theme .text-red-400 {
+        color: #dc2626 !important;
+      } /* Red 600 */
+      body.light-theme .text-purple-400 {
+        color: #9333ea !important;
+      } /* Purple 600 */
 
       /* Minimalistic Borders & Backgrounds */
-      body.light-theme .border-gray-800, 
+      body.light-theme .border-gray-800,
       body.light-theme .border-gray-800\/40,
       body.light-theme .border-gray-800\/60,
       body.light-theme .border-gray-700,
-      body.light-theme .border-gray-700\/50 { border-color: #e2e8f0 !important; } /* Slate 200 */
-      
-      body.light-theme .bg-gray-800, 
-      body.light-theme .bg-gray-700, 
-      body.light-theme .bg-\[\#121212\] { background-color: #f1f5f9 !important; } /* Slate 100 inputs/buttons */
-      
+      body.light-theme .border-gray-700\/50 {
+        border-color: #e2e8f0 !important;
+      } /* Slate 200 */
+
+      body.light-theme .bg-gray-800,
+      body.light-theme .bg-gray-700,
+      body.light-theme .bg-\[\#121212\] {
+        background-color: #f1f5f9 !important;
+      } /* Slate 100 inputs/buttons */
+
       /* Soften the glowing shadows for a clean daytime look */
-      body.light-theme .shadow-lg { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important; }
-      body.light-theme .shadow-\[0_10px_40px_rgba\(0\,0\,0\,0\.5\)\] { box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08) !important; }
-      body.light-theme .bg-cardbg\/70 { background-color: rgba(255, 255, 255, 0.85) !important; }
+      body.light-theme .shadow-lg {
+        box-shadow:
+          0 4px 6px -1px rgba(0, 0, 0, 0.05),
+          0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
+      }
+      body.light-theme .shadow-\[0_10px_40px_rgba\(0\,0\,0\,0\.5\)\] {
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08) !important;
+      }
+      body.light-theme .bg-cardbg\/70 {
+        background-color: rgba(255, 255, 255, 0.85) !important;
+      }
     </style>
   </head>
 
   <body class="bg-deepbg text-gray-200 font-sans pb-24 select-none">
-    
-    <div id="slot-top-nav" class="fixed top-0 left-0 right-0 z-[400] w-full flex flex-col items-center px-4 pt-4 pointer-events-none space-y-3 h-auto">
-    </div>
+    <div
+      id="slot-top-nav"
+      class="fixed top-0 left-0 right-0 z-[400] w-full flex flex-col items-center px-4 pt-4 pointer-events-none space-y-3 h-auto"
+    ></div>
 
-    <div id="slot-global-overlays" class="fixed inset-0 z-[300] hidden flex-col items-center justify-center bg-deepbg px-6 pointer-events-auto"></div>
-    
+    <div
+      id="slot-global-overlays"
+      class="fixed inset-0 z-[300] hidden flex-col items-center justify-center bg-deepbg px-6 pointer-events-auto"
+    ></div>
+
     <main class="p-5 pt-40 max-w-[1200px] mx-auto w-full pointer-events-auto">
-      
       <section id="page-insights" class="block space-y-6">
-        <h1 class="text-2xl font-bold text-white tracking-wide">Tank Insights</h1>
+        <h1 class="text-2xl font-bold text-white tracking-wide">
+          Tank Insights
+        </h1>
         <div id="slot-today-overview"></div>
         <div id="slot-analytics-charts" class="space-y-6"></div>
       </section>
 
       <section id="page-control" class="hidden animate-fade-in space-y-6">
-        <h1 class="text-2xl font-bold text-white tracking-wide">Hardware Control</h1>
+        <h1 class="text-2xl font-bold text-white tracking-wide">
+          Hardware Control
+        </h1>
         <div id="slot-primary-control-card"></div>
         <div id="slot-schedules-stack"></div>
       </section>
 
       <section id="page-color" class="hidden space-y-6">
-        <h1 class="text-2xl font-bold text-white tracking-wide">Color Spectrum</h1>
+        <h1 class="text-2xl font-bold text-white tracking-wide">
+          Color Spectrum
+        </h1>
         <div id="slot-color-preview"></div>
         <div id="slot-color-presets"></div>
         <div id="slot-color-manual-mix"></div>
       </section>
 
-      <section id="page-network" class="hidden space-y-6">
-        <h1 class="text-2xl font-bold text-white tracking-wide">Connection Manager</h1>
+      <section id="page-network" class="hidden pb-24 space-y-6">
+        <h1 class="text-2xl font-bold text-white tracking-wide">
+          Network & Account
+        </h1>
+
+        <div
+          id="network-guest-view"
+          class="bg-gray-900 border border-gray-800 rounded-2xl p-6 text-center shadow-xl"
+        >
+          <div
+            class="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4 border border-gray-700"
+          >
+            <svg
+              class="w-8 h-8 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+              ></path>
+            </svg>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Guest Mode</h3>
+          <p class="text-sm text-gray-400 mb-6">
+            You are controlling tanks locally. Create a free account to back up
+            your configurations and control your tanks from anywhere.
+          </p>
+
+          <button
+            onclick="window.openAuthModal()"
+            class="w-full bg-aqua text-black hover:bg-cyan-400 font-bold py-3 px-4 rounded-lg transition-colors"
+          >
+            Create Account / Log In
+          </button>
+        </div>
+
+        <div
+          id="network-auth-view"
+          class="hidden bg-gray-900 border border-aqua/30 rounded-2xl p-6 shadow-xl relative overflow-hidden"
+        >
+          <div
+            class="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-aqua/10 rounded-full blur-2xl"
+          ></div>
+
+          <div class="flex items-center gap-4 mb-6 relative z-10">
+            <div
+              class="w-12 h-12 bg-aqua/20 rounded-full flex items-center justify-center border border-aqua/50 shadow-[0_0_15px_rgba(0,255,255,0.2)]"
+            >
+              <svg
+                class="w-6 h-6 text-aqua"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M5 13l4 4L19 7"
+                ></path>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-lg font-bold text-white">Cloud Synced</h3>
+              <p id="ui-user-email" class="text-sm text-gray-400">
+                user@example.com
+              </p>
+            </div>
+          </div>
+
+          <div class="border-t border-gray-800 pt-6 mt-2 relative z-10">
+            <button
+              id="btn-logout"
+              class="w-full bg-gray-800 hover:bg-red-500/10 hover:text-red-400 text-white font-bold py-3 px-4 rounded-lg transition-colors border border-gray-700 hover:border-red-500/30"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+
+        <h2 class="text-xl font-bold text-white tracking-wide mt-8">
+          Hardware Connections
+        </h2>
         <div id="slot-network-manager-cards" class="space-y-6"></div>
       </section>
-
     </main>
 
-    <div class="fixed bottom-0 left-0 right-0 z-[100] w-full flex justify-center px-4 pb-3 pointer-events-none">
-      <nav class="pointer-events-auto w-full max-w-[450px] bg-cardbg/70 backdrop-blur-xl border border-gray-700/50 shadow-[0_10px_40px_rgba(0,0,0,0.5)] rounded-full px-2 py-2 flex justify-between items-center">
-        <button id="nav-page-insights" onclick="AquaSync.switchTab('page-insights')" class="flex-1 flex flex-col items-center py-2 rounded-full text-aqua transition-all active:scale-95">
+    <div
+      class="fixed bottom-0 left-0 right-0 z-[100] w-full flex justify-center px-4 pb-3 pointer-events-none"
+    >
+      <nav
+        class="pointer-events-auto w-full max-w-[450px] bg-cardbg/70 backdrop-blur-xl border border-gray-700/50 shadow-[0_10px_40px_rgba(0,0,0,0.5)] rounded-full px-2 py-2 flex justify-between items-center"
+      >
+        <button
+          id="nav-page-insights"
+          onclick="AquaSync.switchTab('page-insights')"
+          class="flex-1 flex flex-col items-center py-2 rounded-full text-aqua transition-all active:scale-95"
+        >
           <span class="text-xl mb-0.5">📊</span>
-          <span class="text-[9px] uppercase tracking-wider font-bold">Insights</span>
+          <span class="text-[9px] uppercase tracking-wider font-bold"
+            >Insights</span
+          >
         </button>
-        <button id="nav-page-control" onclick="AquaSync.switchTab('page-control')" class="flex-1 flex flex-col items-center py-2 rounded-full text-gray-500 transition-all active:scale-95">
+        <button
+          id="nav-page-control"
+          onclick="AquaSync.switchTab('page-control')"
+          class="flex-1 flex flex-col items-center py-2 rounded-full text-gray-500 transition-all active:scale-95"
+        >
           <span class="text-xl mb-0.5">🎚️</span>
-          <span class="text-[9px] uppercase tracking-wider font-bold">Control</span>
+          <span class="text-[9px] uppercase tracking-wider font-bold"
+            >Control</span
+          >
         </button>
-        <button id="nav-page-color" onclick="AquaSync.switchTab('page-color')" class="flex-1 flex flex-col items-center py-2 rounded-full text-gray-500 transition-all active:scale-95">
+        <button
+          id="nav-page-color"
+          onclick="AquaSync.switchTab('page-color')"
+          class="flex-1 flex flex-col items-center py-2 rounded-full text-gray-500 transition-all active:scale-95"
+        >
           <span class="text-xl mb-0.5">🎨</span>
-          <span class="text-[9px] uppercase tracking-wider font-bold">Color</span>
+          <span class="text-[9px] uppercase tracking-wider font-bold"
+            >Color</span
+          >
         </button>
-        <button id="nav-page-network" onclick="AquaSync.switchTab('page-network')" class="flex-1 flex flex-col items-center py-2 rounded-full text-gray-500 transition-all active:scale-95">
+        <button
+          id="nav-page-network"
+          onclick="AquaSync.switchTab('page-network')"
+          class="flex-1 flex flex-col items-center py-2 rounded-full text-gray-500 transition-all active:scale-95"
+        >
           <span class="text-xl mb-0.5">🛜</span>
-          <span class="text-[9px] uppercase tracking-wider font-bold">Network</span>
+          <span class="text-[9px] uppercase tracking-wider font-bold"
+            >Network</span
+          >
         </button>
       </nav>
     </div>
 
     <template id="tpl-insights-overview">
-      <div class="bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800 transition-colors duration-300">
+      <div
+        class="bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800 transition-colors duration-300"
+      >
         <div class="flex justify-between items-center mb-4">
-          <h2 class="text-sm uppercase text-gray-400 font-semibold tracking-wide">Today's Overview</h2>
-          
+          <h2
+            class="text-sm uppercase text-gray-400 font-semibold tracking-wide"
+          >
+            Today's Overview
+          </h2>
+
           <div class="relative flex h-2.5 w-2.5 items-center justify-center">
-              <span id="ui-overview-ping" class="absolute inline-flex h-full w-full rounded-full opacity-75 hidden"></span>
-              <span id="ui-overview-dot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-gray-500 transition-colors duration-300"></span>
+            <span
+              id="ui-overview-ping"
+              class="absolute inline-flex h-full w-full rounded-full opacity-75 hidden"
+            ></span>
+            <span
+              id="ui-overview-dot"
+              class="relative inline-flex rounded-full h-2.5 w-2.5 bg-gray-500 transition-colors duration-300"
+            ></span>
           </div>
-          
         </div>
-        
-        <div class="grid gap-x-4 gap-y-6 pb-6 border-b border-gray-800/40 tpl-status-grid"></div>
-        
-        <div class="grid grid-cols-2 gap-y-6 gap-x-4 pt-6 text-xs font-medium text-gray-300">
+
+        <div
+          class="grid gap-x-4 gap-y-6 pb-6 border-b border-gray-800/40 tpl-status-grid"
+        ></div>
+
+        <div
+          class="grid grid-cols-2 gap-y-6 gap-x-4 pt-6 text-xs font-medium text-gray-300"
+        >
           <div>
-            <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Sunrise Commenced</p>
-            <span class="tpl-sunrise-val text-[15px] font-bold text-gray-200">--:--</span>
+            <p
+              class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1"
+            >
+              Sunrise Commenced
+            </p>
+            <span class="tpl-sunrise-val text-[15px] font-bold text-gray-200"
+              >--:--</span
+            >
           </div>
           <div class="text-right">
-            <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Estimated Sunset</p>
-            <span class="tpl-sunset-val text-[15px] font-bold text-gray-200">--:--</span>
+            <p
+              class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1"
+            >
+              Estimated Sunset
+            </p>
+            <span class="tpl-sunset-val text-[15px] font-bold text-gray-200"
+              >--:--</span
+            >
           </div>
           <div>
-            <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Target Photoperiod</p>
+            <p
+              class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1"
+            >
+              Target Photoperiod
+            </p>
             <span class="tpl-photo-val">--</span>
           </div>
           <div class="text-right">
-            <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Recovery Ramp</p>
+            <p
+              class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1"
+            >
+              Recovery Ramp
+            </p>
             <span class="tpl-recovery-val text-red-400">--</span>
           </div>
         </div>
@@ -172,11 +380,16 @@
 
     <template id="tpl-analytics-chart-card">
       <div class="bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800">
-        <h2 class="text-sm uppercase text-gray-400 font-semibold tracking-wide mb-4 tpl-chart-title">Activity Graph</h2>
-        
-        <div class="grid gap-4 mb-4 pb-4 border-b border-gray-800/40 text-xs tpl-stats-grid">
-        </div>
-        
+        <h2
+          class="text-sm uppercase text-gray-400 font-semibold tracking-wide mb-4 tpl-chart-title"
+        >
+          Activity Graph
+        </h2>
+
+        <div
+          class="grid gap-4 mb-4 pb-4 border-b border-gray-800/40 text-xs tpl-stats-grid"
+        ></div>
+
         <div class="relative w-full h-40">
           <canvas class="tpl-chart-canvas"></canvas>
         </div>
@@ -184,49 +397,101 @@
     </template>
 
     <template id="tpl-mode-banner">
-      <div class="bg-cardbg rounded-2xl p-4 border border-gray-800 flex justify-between items-center shadow-md">
+      <div
+        class="bg-cardbg rounded-2xl p-4 border border-gray-800 flex justify-between items-center shadow-md"
+      >
         <div class="flex items-center space-x-3">
           <span class="text-2xl tpl-mode-icon">🤖</span>
           <div>
-            <h2 class="text-sm font-bold text-aqua tracking-wide tpl-mode-title">Auto Mode</h2>
-            <p class="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5 tpl-mode-desc">Following Schedule</p>
+            <h2
+              class="text-sm font-bold text-aqua tracking-wide tpl-mode-title"
+            >
+              Auto Mode
+            </h2>
+            <p
+              class="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5 tpl-mode-desc"
+            >
+              Following Schedule
+            </p>
           </div>
         </div>
-        <button class="bg-[#121212] text-gray-400 border border-gray-700 hover:text-white px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all active:scale-95 tpl-mode-btn">
+        <button
+          class="bg-[#121212] text-gray-400 border border-gray-700 hover:text-white px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all active:scale-95 tpl-mode-btn"
+        >
           Set Manual
         </button>
       </div>
     </template>
 
     <template id="tpl-quick-override-box">
-      <button class="bg-cardbg border-2 border-gray-800 rounded-2xl p-4 flex flex-col items-center justify-center transition-all active:scale-95 shadow-md group">
+      <button
+        class="bg-cardbg border-2 border-gray-800 rounded-2xl p-4 flex flex-col items-center justify-center transition-all active:scale-95 shadow-md group"
+      >
         <span class="text-2xl mb-1 tpl-box-icon">💡</span>
-        <span class="text-[10px] uppercase tracking-wider font-bold text-gray-500 tracking-widest tpl-box-label">Light: OFF</span>
+        <span
+          class="text-[10px] uppercase tracking-wider font-bold text-gray-500 tracking-widest tpl-box-label"
+          >Light: OFF</span
+        >
       </button>
     </template>
 
     <template id="tpl-schedule-config-card">
-      <div class="bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800 space-y-4">
-        <div class="flex justify-between items-center border-b border-gray-800/60 pb-3 header-row">
-          <h2 class="text-sm uppercase text-gray-400 font-semibold flex items-center"><span class="text-lg mr-2 tpl-card-icon">☀️</span> <span class="tpl-card-title">Primary Lighting</span></h2>
+      <div
+        class="bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800 space-y-4"
+      >
+        <div
+          class="flex justify-between items-center border-b border-gray-800/60 pb-3 header-row"
+        >
+          <h2
+            class="text-sm uppercase text-gray-400 font-semibold flex items-center"
+          >
+            <span class="text-lg mr-2 tpl-card-icon">☀️</span>
+            <span class="tpl-card-title">Primary Lighting</span>
+          </h2>
           <div class="tpl-toggle-container hidden">
             <label class="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" class="sr-only peer tpl-card-toggle" />
-              <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:bg-aqua peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+              <div
+                class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:bg-aqua peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"
+              ></div>
             </label>
           </div>
         </div>
         <div class="grid grid-cols-2 gap-4 tpl-body-content">
           <div class="time-container">
-            <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Start Time</label>
-            <input type="time" class="w-full bg-[#121212] border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-aqua text-sm font-medium tpl-time-input" />
+            <label
+              class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2"
+              >Start Time</label
+            >
+            <input
+              type="time"
+              class="w-full bg-[#121212] border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-aqua text-sm font-medium tpl-time-input"
+            />
           </div>
           <div class="stepper-container">
-            <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2 tpl-stepper-label">Photoperiod</label>
-            <div class="flex items-center justify-between bg-[#121212] border border-gray-700 rounded-lg px-1 py-1">
-              <button class="w-8 h-8 flex items-center justify-center bg-cardbg rounded-md text-gray-400 hover:text-white hover:bg-gray-700 active:scale-95 transition-all tpl-step-down">-</button>
-              <div class="text-white font-bold text-sm"><span class="tpl-stepper-value">8</span><span class="text-[10px] text-gray-500 ml-1 tpl-stepper-unit">hrs</span></div>
-              <button class="w-8 h-8 flex items-center justify-center bg-cardbg rounded-md text-gray-400 hover:text-white hover:bg-gray-700 active:scale-95 transition-all tpl-step-up">+</button>
+            <label
+              class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2 tpl-stepper-label"
+              >Photoperiod</label
+            >
+            <div
+              class="flex items-center justify-between bg-[#121212] border border-gray-700 rounded-lg px-1 py-1"
+            >
+              <button
+                class="w-8 h-8 flex items-center justify-center bg-cardbg rounded-md text-gray-400 hover:text-white hover:bg-gray-700 active:scale-95 transition-all tpl-step-down"
+              >
+                -
+              </button>
+              <div class="text-white font-bold text-sm">
+                <span class="tpl-stepper-value">8</span
+                ><span class="text-[10px] text-gray-500 ml-1 tpl-stepper-unit"
+                  >hrs</span
+                >
+              </div>
+              <button
+                class="w-8 h-8 flex items-center justify-center bg-cardbg rounded-md text-gray-400 hover:text-white hover:bg-gray-700 active:scale-95 transition-all tpl-step-up"
+              >
+                +
+              </button>
             </div>
           </div>
         </div>
@@ -234,108 +499,427 @@
     </template>
 
     <template id="tpl-empty-splash">
-      <div class="flex flex-col items-center justify-center text-center w-full h-full bg-deepbg z-[300] absolute inset-0 px-6">
-        <div class="w-24 h-24 bg-aqua/10 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(0,242,254,0.15)]">
+      <div
+        class="flex flex-col items-center justify-center text-center w-full h-full bg-deepbg z-[300] absolute inset-0 px-6"
+      >
+        <div
+          class="w-24 h-24 bg-aqua/10 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(0,242,254,0.15)]"
+        >
           <span class="text-6xl">🌊</span>
         </div>
-        <h1 class="text-3xl font-bold text-white mb-3 tracking-wide">No Devices Linked</h1>
-        <p class="text-gray-500 text-sm mb-10 max-w-xs leading-relaxed">Start your automated aquatic journey by pairing your first AquaSync controller.</p>
-        <button id="btn-start-discovery" class="w-full max-w-[280px] bg-aqua text-black font-bold py-4 rounded-2xl uppercase tracking-widest text-sm transition-all active:scale-95 shadow-[0_0_20px_rgba(0,242,254,0.3)]">
+        <h1 class="text-3xl font-bold text-white mb-3 tracking-wide">
+          No Devices Linked
+        </h1>
+        <p class="text-gray-500 text-sm mb-10 max-w-xs leading-relaxed">
+          Start your automated aquatic journey by pairing your first AquaSync
+          controller.
+        </p>
+        <button
+          id="btn-start-discovery"
+          class="w-full max-w-[280px] bg-aqua text-black font-bold py-4 rounded-2xl uppercase tracking-widest text-sm transition-all active:scale-95 shadow-[0_0_20px_rgba(0,242,254,0.3)]"
+        >
           Discover Devices
         </button>
       </div>
     </template>
 
     <template id="tpl-pairing-wizard">
-      <div class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[400] px-4 animate-fade-in">
-        <div class="bg-cardbg rounded-3xl p-6 shadow-2xl border border-gray-800 w-full max-w-sm relative overflow-hidden flex flex-col">
-          
+      <div
+        class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[400] px-4 animate-fade-in"
+      >
+        <div
+          class="bg-cardbg rounded-3xl p-6 shadow-2xl border border-gray-800 w-full max-w-sm relative overflow-hidden flex flex-col"
+        >
           <div class="flex justify-between items-center mb-6">
-            <h2 class="text-sm uppercase text-white font-bold tracking-wider">Wi-Fi Setup</h2>
-            <button type="button" id="btn-close-wizard" class="text-gray-500 hover:text-red-400 text-3xl p-2 -mr-2 leading-none transition-colors cursor-pointer z-50">&times;</button>
+            <h2 class="text-sm uppercase text-white font-bold tracking-wider">
+              Wi-Fi Setup
+            </h2>
+            <button
+              type="button"
+              id="btn-close-wizard"
+              class="text-gray-500 hover:text-red-400 text-3xl p-2 -mr-2 leading-none transition-colors cursor-pointer z-50"
+            >
+              &times;
+            </button>
           </div>
 
           <div id="view-listen" class="space-y-6">
-            <div class="bg-[#121212] p-5 rounded-xl border border-gray-800 text-left">
-              <ol class="text-xs text-gray-400 space-y-4 list-decimal list-inside marker:text-aqua marker:font-bold">
-                <li>Open your phone's <span class="font-bold text-white">Wi-Fi Settings</span>.</li>
-                <li>Connect to the network named: <br />
-                  <div class="bg-cardbg border border-gray-700 px-3 py-2 rounded-lg mt-2 flex items-center justify-between shadow-inner">
-                    <span class="font-mono text-aqua font-bold tracking-wider">AquaControl_setup</span>
+            <div
+              class="bg-[#121212] p-5 rounded-xl border border-gray-800 text-left"
+            >
+              <ol
+                class="text-xs text-gray-400 space-y-4 list-decimal list-inside marker:text-aqua marker:font-bold"
+              >
+                <li>
+                  Open your phone's
+                  <span class="font-bold text-white">Wi-Fi Settings</span>.
+                </li>
+                <li>
+                  Connect to the network named: <br />
+                  <div
+                    class="bg-cardbg border border-gray-700 px-3 py-2 rounded-lg mt-2 flex items-center justify-between shadow-inner"
+                  >
+                    <span class="font-mono text-aqua font-bold tracking-wider"
+                      >AquaControl_setup</span
+                    >
                   </div>
                 </li>
                 <li>Return to this app.</li>
               </ol>
             </div>
-            <div class="flex flex-col items-center justify-center space-y-3 pt-4">
+            <div
+              class="flex flex-col items-center justify-center space-y-3 pt-4"
+            >
               <span class="text-3xl animate-pulse">📡</span>
-              <p class="text-[10px] text-aqua text-center uppercase tracking-widest animate-pulse">Listening for device...</p>
+              <p
+                class="text-[10px] text-aqua text-center uppercase tracking-widest animate-pulse"
+              >
+                Listening for device...
+              </p>
             </div>
           </div>
 
           <div id="view-found" class="hidden space-y-5">
-            <div class="bg-aqua/10 border border-aqua/50 rounded-2xl p-4 text-center shadow-[0_0_15px_rgba(0,242,254,0.1)]">
+            <div
+              class="bg-aqua/10 border border-aqua/50 rounded-2xl p-4 text-center shadow-[0_0_15px_rgba(0,242,254,0.1)]"
+            >
               <span class="text-3xl mb-2 block drop-shadow-md">🐠</span>
-              <h3 class="text-white font-bold text-sm tracking-wide">Controller Found!</h3>
-              <p id="txt-found-hwid" class="text-[10px] text-aqua uppercase tracking-widest mt-1 font-mono">HW_ID: ----</p>
+              <h3 class="text-white font-bold text-sm tracking-wide">
+                Controller Found!
+              </h3>
+              <p
+                id="txt-found-hwid"
+                class="text-[10px] text-aqua uppercase tracking-widest mt-1 font-mono"
+              >
+                HW_ID: ----
+              </p>
             </div>
             <div class="space-y-4">
               <div>
-                <label class="block text-[10px] text-gray-400 uppercase tracking-wider mb-2 ml-1">Home Wi-Fi Name (SSID)</label>
-                <input type="text" id="inp-ssid" placeholder="e.g. Home_Network_2.4G" class="w-full bg-[#121212] border border-gray-700 rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-aqua transition-colors text-sm" />
+                <label
+                  class="block text-[10px] text-gray-400 uppercase tracking-wider mb-2 ml-1"
+                  >Home Wi-Fi Name (SSID)</label
+                >
+                <input
+                  type="text"
+                  id="inp-ssid"
+                  placeholder="e.g. Home_Network_2.4G"
+                  class="w-full bg-[#121212] border border-gray-700 rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-aqua transition-colors text-sm"
+                />
               </div>
               <div>
-                <label class="block text-[10px] text-gray-400 uppercase tracking-wider mb-2 ml-1">Password</label>
-                <input type="password" id="inp-pass" placeholder="Enter password" class="w-full bg-[#121212] border border-gray-700 rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-aqua transition-colors text-sm" />
+                <label
+                  class="block text-[10px] text-gray-400 uppercase tracking-wider mb-2 ml-1"
+                  >Password</label
+                >
+                <input
+                  type="password"
+                  id="inp-pass"
+                  placeholder="Enter password"
+                  class="w-full bg-[#121212] border border-gray-700 rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-aqua transition-colors text-sm"
+                />
               </div>
               <div>
-                <label class="block text-[10px] text-gray-400 uppercase tracking-wider mb-2 ml-1">Device Name</label>
-                <input type="text" id="inp-name" placeholder="e.g., Living Room Tank" class="w-full bg-[#121212] border border-gray-700 rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-aqua transition-colors text-sm" />
+                <label
+                  class="block text-[10px] text-gray-400 uppercase tracking-wider mb-2 ml-1"
+                  >Device Name</label
+                >
+                <input
+                  type="text"
+                  id="inp-name"
+                  placeholder="e.g., Living Room Tank"
+                  class="w-full bg-[#121212] border border-gray-700 rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-aqua transition-colors text-sm"
+                />
               </div>
             </div>
-            <button id="btn-send-creds" class="w-full bg-aqua text-black font-bold py-4 rounded-xl uppercase tracking-widest text-xs transition-all active:scale-95 shadow-[0_0_15px_rgba(0,242,254,0.2)] mt-2">
+            <button
+              id="btn-send-creds"
+              class="w-full bg-aqua text-black font-bold py-4 rounded-xl uppercase tracking-widest text-xs transition-all active:scale-95 shadow-[0_0_15px_rgba(0,242,254,0.2)] mt-2"
+            >
               Pair Device
             </button>
           </div>
-
         </div>
       </div>
     </template>
-    <div id="about-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-[300] animate-fade-in px-4">
-  <div class="bg-cardbg rounded-3xl px-3 py-6 shadow-2xl border border-gray-800 w-full max-w-sm relative overflow-hidden">
-    
-    <div class="flex justify-between items-center mb-6">
-      <h2 class="text-sm uppercase text-gray-500 font-bold tracking-wider">About</h2>
-      <button aria-label="Close About" onclick="hideAboutModal()" class="text-gray-500 hover:text-red-400 text-3xl leading-none transition-colors cursor-pointer">&times;</button>
-    </div>
+    <div
+      id="about-modal"
+      class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-[300] animate-fade-in px-4"
+    >
+      <div
+        class="bg-cardbg rounded-3xl px-3 py-6 shadow-2xl border border-gray-800 w-full max-w-sm relative overflow-hidden"
+      >
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-sm uppercase text-gray-500 font-bold tracking-wider">
+            About
+          </h2>
+          <button
+            aria-label="Close About"
+            onclick="hideAboutModal()"
+            class="text-gray-500 hover:text-red-400 text-3xl leading-none transition-colors cursor-pointer"
+          >
+            &times;
+          </button>
+        </div>
 
-    <div class="text-center flex flex-col items-center mb-6">
-      <div class="w-16 h-16 bg-gradient-to-br from-aqua to-blue-600 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(0,242,254,0.3)] mb-4">
-        <span class="text-3xl">🌊</span>
-      </div>
-      <h2 class="text-xl font-bold text-white tracking-wider">AquaSync</h2>
-      <p class="text-[10px] text-aqua font-semibold tracking-widest uppercase mb-4">Precision Automation for the <br>Planted Ecosystem</p>
-      <p class="text-[11px] text-gray-400 leading-relaxed px-2">
-        AquaSync provides pro-grade management of your aquarium’s vital systems. By automating lighting cycles, CO2 injection, and surface cooling, this system ensures the consistent environmental stability required for a vibrant, thriving planted tank.
-      </p>
-    </div>
+        <div class="text-center flex flex-col items-center mb-6">
+          <div
+            class="w-16 h-16 bg-gradient-to-br from-aqua to-blue-600 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(0,242,254,0.3)] mb-4"
+          >
+            <span class="text-3xl">🌊</span>
+          </div>
+          <h2 class="text-xl font-bold text-white tracking-wider">AquaSync</h2>
+          <p
+            class="text-[10px] text-aqua font-semibold tracking-widest uppercase mb-4"
+          >
+            Precision Automation for the <br />Planted Ecosystem
+          </p>
+          <p class="text-[11px] text-gray-400 leading-relaxed px-2">
+            AquaSync provides pro-grade management of your aquarium’s vital
+            systems. By automating lighting cycles, CO2 injection, and surface
+            cooling, this system ensures the consistent environmental stability
+            required for a vibrant, thriving planted tank.
+          </p>
+        </div>
 
-    <div class="border-t border-gray-800 pt-5">
-      <h3 class="text-[10px] uppercase text-gray-500 font-semibold mb-4 text-center">Developed By</h3>
-      <div class="flex items-center justify-center mb-6">
-        <div class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center text-lg mr-3 border border-gray-700">👨‍💻</div>
-        <div class="text-left">
-          <p class="text-white font-bold text-sm">Nafish Fuad</p>
-          <p class="text-[9px] text-gray-500 uppercase tracking-wider">Coded by Gemini — don't worry, the bugs are features.</p>
+        <div class="border-t border-gray-800 pt-5">
+          <h3
+            class="text-[10px] uppercase text-gray-500 font-semibold mb-4 text-center"
+          >
+            Developed By
+          </h3>
+          <div class="flex items-center justify-center mb-6">
+            <div
+              class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center text-lg mr-3 border border-gray-700"
+            >
+              👨‍💻
+            </div>
+            <div class="text-left">
+              <p class="text-white font-bold text-sm">Nafish Fuad</p>
+              <p class="text-[9px] text-gray-500 uppercase tracking-wider">
+                Coded by Gemini — don't worry, the bugs are features.
+              </p>
+            </div>
+          </div>
+          <p class="text-[9px] text-gray-600 text-center tracking-tight">
+            &copy; 2026 AquaSync Ecosystem. All rights reserved. <br />
+            Unauthorized reproduction of hardware or software prohibited.
+          </p>
         </div>
       </div>
-      <p class="text-[9px] text-gray-600 text-center tracking-tight">
-        &copy; 2026 AquaSync Ecosystem. All rights reserved. <br/> Unauthorized reproduction of hardware or software prohibited.
-      </p>
     </div>
-    
-  </div>
-</div>
+    <div
+      id="modal-auth"
+      class="hidden fixed inset-0 z-[500] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+    >
+      <div
+        class="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative"
+      >
+        <button
+          onclick="
+            document.getElementById('modal-auth').classList.add('hidden')
+          "
+          class="absolute top-4 right-4 text-gray-500 hover:text-white"
+        >
+          <svg
+            class="w-6 h-6"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            ></path>
+          </svg>
+        </button>
+
+        <h2 class="text-2xl font-bold text-white mb-2">AquaSync Cloud</h2>
+        <p class="text-sm text-gray-400 mb-6">
+          Log in to sync your tanks across all devices.
+        </p>
+
+        <form id="form-auth" class="space-y-4">
+          <div>
+            <label
+              class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1"
+              >Email</label
+            >
+            <input
+              type="email"
+              id="auth-email"
+              required
+              class="w-full bg-black border border-gray-800 text-white rounded-lg p-3 outline-none focus:border-aqua transition-colors"
+              placeholder="user@example.com"
+            />
+          </div>
+          <div>
+            <label
+              class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1"
+              >Password</label
+            >
+            <input
+              type="password"
+              id="auth-password"
+              required
+              minlength="6"
+              class="w-full bg-black border border-gray-800 text-white rounded-lg p-3 outline-none focus:border-aqua transition-colors"
+              placeholder="••••••••"
+            />
+          </div>
+
+          <div
+            id="auth-error"
+            class="hidden text-red-500 text-xs font-bold bg-red-500/10 p-2 rounded border border-red-500/20"
+          ></div>
+
+          <div class="flex gap-3 pt-2">
+            <button
+              type="button"
+              id="btn-login"
+              class="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg transition-colors"
+            >
+              Log In
+            </button>
+            <button
+              type="button"
+              id="btn-signup"
+              class="flex-1 bg-aqua text-black hover:bg-cyan-400 font-bold py-3 px-4 rounded-lg transition-colors"
+            >
+              Sign Up
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div
+      id="modal-add-device"
+      class="hidden fixed inset-0 z-[500] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+    >
+      <div
+        class="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative overflow-hidden"
+      >
+        <button
+          onclick="
+            document.getElementById('modal-add-device').classList.add('hidden')
+          "
+          class="absolute top-4 right-4 text-gray-500 hover:text-white z-10"
+        >
+          <svg
+            class="w-6 h-6"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            ></path>
+          </svg>
+        </button>
+
+        <div id="setup-step-1" class="block transition-all duration-300">
+          <h2 class="text-2xl font-bold text-white mb-2">Find Device</h2>
+          <p class="text-sm text-gray-400 mb-6">
+            Go to your phone's Wi-Fi settings and connect to the network named
+            <span class="text-aqua font-bold">AquaControl_setup</span>, then
+            return here.
+          </p>
+
+          <button
+            type="button"
+            id="btn-scan-local"
+            class="w-full bg-aqua text-black hover:bg-cyan-400 font-bold py-3 px-4 rounded-lg transition-colors flex justify-center items-center gap-2"
+          >
+            <svg
+              class="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              ></path>
+            </svg>
+            Scan for Tank
+          </button>
+          <p
+            id="scan-error"
+            class="hidden text-red-500 text-xs font-bold mt-3 text-center"
+          ></p>
+        </div>
+
+        <div id="setup-step-2" class="hidden transition-all duration-300">
+          <h2 class="text-2xl font-bold text-white mb-2">Configure Tank</h2>
+          <p class="text-sm text-gray-400 mb-4">
+            Tank found!
+            <span
+              id="display-found-hwid"
+              class="text-xs font-mono text-gray-500 block mt-1"
+            ></span>
+          </p>
+
+          <form id="form-provision-device" class="space-y-4">
+            <input type="hidden" id="prov-hwid" />
+
+            <div>
+              <label
+                class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1"
+                >Name your tank</label
+              >
+              <input
+                type="text"
+                id="prov-name"
+                required
+                class="w-full bg-black border border-gray-800 text-white rounded-lg p-3 outline-none focus:border-aqua transition-colors"
+                placeholder="e.g., Living Room Betta"
+              />
+            </div>
+
+            <div class="border-t border-gray-800 pt-4 mt-4">
+              <label
+                class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1"
+                >Home Wi-Fi Network</label
+              >
+              <input
+                type="text"
+                id="prov-ssid"
+                required
+                class="w-full bg-black border border-gray-800 text-white rounded-lg p-3 outline-none focus:border-aqua transition-colors mb-3"
+                placeholder="Wi-Fi Name (SSID)"
+              />
+
+              <label
+                class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1"
+                >Wi-Fi Password</label
+              >
+              <input
+                type="password"
+                id="prov-pass"
+                class="w-full bg-black border border-gray-800 text-white rounded-lg p-3 outline-none focus:border-aqua transition-colors"
+                placeholder="Password"
+              />
+            </div>
+
+            <button
+              type="submit"
+              id="btn-submit-provision"
+              class="w-full bg-aqua text-black hover:bg-cyan-400 font-bold py-3 px-4 rounded-lg transition-colors mt-2"
+            >
+              Connect to Cloud
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="./src/main.js"></script>
   </body>

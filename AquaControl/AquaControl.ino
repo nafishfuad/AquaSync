@@ -6,14 +6,17 @@
 #include "HardwareEngine.h"
 #include "ButtonManager.h"
 #include "AquaNetworkManager.h" 
+#include "OutageTracker.h" // 🔥 NEW: Include the Autopsy Outage Tracker
 
 SettingsManager settingsMgr;
 HardwareEngine  hwEngine;
 ButtonManager   btnManager(settingsMgr, hwEngine);
 AquaNetworkManager* netManager; 
 
-String hwid;
+// 🔥 NEW: Instantiate the Tracker and pass it the settings manager
+OutageTracker outageTracker(settingsMgr); 
 
+String hwid;
 
 // 🔥 PHASE 1: The Cryptographic HWID Generator
 String generateSecureHWID() {
@@ -124,6 +127,9 @@ void loop() {
     
     netManager->syncFirebase();
     settingsMgr.processLazyFlashSave();
+
+    // 🔥 NEW: Run the tracker loop
+    outageTracker.loop();
 
     delay(10); 
 }

@@ -6,7 +6,9 @@ let heartbeatInterval = null;
 
 export function setupDemoDevice() {
     const demoId = "DEMO-" + Math.floor(Math.random() * 10000);
-    DeviceStore.addDevice(demoId, "AS-Standard", "Virtual Demo Tank");
+    
+    // 🔥 FIX: Use addDeviceLocal since we updated the cloud architecture in state.js
+    DeviceStore.addDeviceLocal(demoId, "AS-Standard", "Virtual Demo Tank");
     
     const dev = DeviceStore.devices[demoId];
     dev.isDummy = true;
@@ -44,8 +46,6 @@ export function setupDemoDevice() {
     };
     
     DeviceStore.setActiveDevice(demoId);
-    
-    // 🔥 THE FIX: Explicitly force the browser to save to LocalStorage before reloading!
     DeviceStore.save(); 
     window.location.reload();
 }
@@ -53,7 +53,12 @@ export function setupDemoDevice() {
 export function renderPairingWizard(onComplete) {
     const slot = document.getElementById("slot-global-overlays");
     const template = document.getElementById("tpl-pairing-wizard");
-    if (!template || !slot) return;
+    
+    // Fallback: If you deleted the old template in favor of the new modal in index.html
+    if (!template || !slot) {
+        if (window.openAddDeviceModal) window.openAddDeviceModal();
+        return;
+    }
 
     slot.innerHTML = "";
     const clone = template.content.cloneNode(true);
@@ -116,11 +121,17 @@ export function renderPairingWizard(onComplete) {
 
         if (success) {
             btnSend.innerHTML = `✅ Paired!`;
-            DeviceStore.addDevice(discoveredHwid, "AS-Standard", deviceName);
-            DeviceStore.updateNetwork(discoveredHwid, null, true); 
             
-            // 🔥 THE FIX: Explicitly force the browser to save to LocalStorage before closing!
-            DeviceStore.save(); 
+            // 🔥 FIX: Ensure the device is securely claimed to the Cloud Account (if logged in)
+            try {
+                if (window.handleAddNewDeviceForm) {
+                    await window.handleAddNewDeviceForm(discoveredHwid, "AS-Standard", deviceName);
+                } else {
+                    await DeviceStore.claimDevice(discoveredHwid, "AS-Standard", deviceName);
+                }
+            } catch (err) {
+                console.error("Cloud Claim Error:", err);
+            }
             
             setTimeout(() => {
                 closeModal();
@@ -149,11 +160,16 @@ export function renderEmptyState() {
     const startBtn = document.getElementById("btn-start-discovery");
     if (startBtn) {
         startBtn.addEventListener("click", () => {
-            renderPairingWizard(() => {
-                slot.classList.add("hidden");
-                slot.classList.remove("flex");
-                window.location.reload(); 
-            });
+            // Intelligent routing: Uses the new Smart UI if available, else falls back to old wizard
+            if (window.openAddDeviceModal && !document.getElementById("tpl-pairing-wizard")) {
+                window.openAddDeviceModal();
+            } else {
+                renderPairingWizard(() => {
+                    slot.classList.add("hidden");
+                    slot.classList.remove("flex");
+                    window.location.reload(); 
+                });
+            }
         });
 
         const demoBtn = document.createElement("button");
@@ -162,5 +178,12 @@ export function renderEmptyState() {
         demoBtn.onclick = () => setupDemoDevice();
         
         startBtn.parentNode.insertBefore(demoBtn, startBtn.nextSibling);
+
+        // 🔥 NEW: Inject the Login option for returning Cloud users
+        const loginWrapper = document.createElement("p");
+        loginWrapper.className = "text-sm text-gray-500 mt-6 text-center";
+        loginWrapper.innerHTML = `Already have an account? <button class="text-aqua font-bold hover:underline transition-all outline-none" onclick="window.openAuthModal()">Log In to Sync</button>`;
+        
+        startBtn.parentNode.insertBefore(loginWrapper, demoBtn.nextSibling);
     }
 }

@@ -1,5 +1,12 @@
 // src/state.js
 
+// 1. Import ONLY the specific Firebase methods we need to use
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "firebase/auth";
+import { ref, onValue, set, get } from "firebase/database";
+
+// 2. 🔥 THE CONNECTION: Import the live Auth and DB instances from your central config file
+import { auth, db } from "./firebase-config.js";
+
 function formatTime(minutes) {
     const h = Math.floor(minutes / 60).toString().padStart(2, '0');
     const m = (minutes % 60).toString().padStart(2, '0');
@@ -21,11 +28,74 @@ function toArray(data, length, defaultVal) {
     return Array(length).fill(defaultVal);
 }
 
+// ==========================================
+// NEW: IDENTITY STORE (Authentication & Sync)
+// ==========================================
+export const IdentityStore = {
+    currentUser: null,
+    isGuest: true,
+
+    init() {
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                console.log("🔓 User logged in:", user.email);
+                this.currentUser = user;
+                this.isGuest = false;
+                
+                // 1. Push any local guest tanks to the new cloud account
+                await DeviceStore.syncLocalToCloud();
+
+                // 2. Download their full cloud ecosystem
+                DeviceStore.loadFromCloud(user.uid);
+
+                // 3. Tell the UI to update the Network Page
+                window.dispatchEvent(new CustomEvent("aquasync_auth_changed", { detail: { isGuest: false, email: user.email } }));
+            } else {
+                console.log("👤 Running in Local Guest Mode");
+                this.currentUser = null;
+                this.isGuest = true;
+                DeviceStore.initLocal(); // Fall back to localStorage
+
+                // Tell UI to show Guest Mode
+                window.dispatchEvent(new CustomEvent("aquasync_auth_changed", { detail: { isGuest: true, email: null } }));
+            }
+        });
+    },
+
+    async login(email, password) {
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
+            return { success: true };
+        } catch (error) {
+            return { success: false, message: error.message };
+        }
+    },
+
+    async signup(email, password) {
+        try {
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            // Create their empty Vault A ecosystem
+            await set(ref(db, `users/${userCredential.user.uid}/ecosystem`), {});
+            return { success: true };
+        } catch (error) {
+            return { success: false, message: error.message };
+        }
+    },
+
+    logout() {
+        signOut(auth);
+    }
+};
+
+// ==========================================
+// UPDATED: DEVICE STORE
+// ==========================================
 export const DeviceStore = {
     activeDeviceId: null,
     devices: {},
 
-    init() {
+    // 1. LOCAL LOAD (For Guests)
+    initLocal() {
         try {
             const storedData = localStorage.getItem("aquasync_ecosystem");
             if (storedData) {
@@ -47,9 +117,92 @@ export const DeviceStore = {
         } else if (Object.keys(this.devices).length > 0) {
             this.activeDeviceId = Object.keys(this.devices)[0];
         }
+        
+        // Trigger a custom event so your UI knows data is ready to draw
+        window.dispatchEvent(new Event("aquasync_data_ready"));
     },
 
-    addDevice(hwid, model, name) {
+    // 🔥 NEW: The Local-to-Cloud Migration Engine
+    async syncLocalToCloud() {
+        if (IdentityStore.isGuest) return; // Safety check
+        
+        // Loop through everything currently in memory (which was loaded from localStorage)
+        for (let hwid in this.devices) {
+            const dev = this.devices[hwid];
+            console.log(`🚀 Migrating local tank [${dev.name}] to Cloud...`);
+            
+            // We reuse our existing claim function to securely push it to Vault A and Vault B
+            await this.claimDevice(hwid, dev.model, dev.name);
+        }
+    },
+
+    // 2. CLOUD LOAD (For Logged-In Users)
+    loadFromCloud(uid) {
+        const ecoRef = ref(db, `users/${uid}/ecosystem`);
+        onValue(ecoRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const ecosystem = snapshot.val();
+                
+                // Merge cloud ecosystem into local state
+                for (let hwid in ecosystem) {
+                    if (!this.devices[hwid]) {
+                         // Build the empty shell so the UI doesn't crash while waiting for ESP32 telemetry
+                         this.addDeviceLocal(hwid, ecosystem[hwid].model, ecosystem[hwid].name);
+                    } else {
+                         // Update name if changed on another device
+                         this.devices[hwid].name = ecosystem[hwid].name;
+                    }
+                }
+                
+                if (!this.activeDeviceId && Object.keys(this.devices).length > 0) {
+                    this.activeDeviceId = Object.keys(this.devices)[0];
+                }
+                console.log("☁️ Ecosystem loaded from Cloud");
+            } else {
+                console.log("☁️ Ecosystem is empty.");
+                this.devices = {};
+            }
+            window.dispatchEvent(new Event("aquasync_data_ready"));
+        });
+    },
+
+    // 3. THE CLAIMING PROTOCOL (Replaces old addDevice)
+    async claimDevice(hwid, model, name) {
+        if (IdentityStore.isGuest) {
+            this.addDeviceLocal(hwid, model, name);
+            return { success: true };
+        }
+
+        const uid = IdentityStore.currentUser.uid;
+        const deviceRef = ref(db, `devices/${hwid}/ownerUid`);
+        
+        try {
+            const snapshot = await get(deviceRef);
+            const currentOwner = snapshot.val();
+
+            if (currentOwner === null || currentOwner === uid) {
+                // Device is an orphan, or we already own it. Claim it!
+                await set(ref(db, `devices/${hwid}/ownerUid`), uid);
+                
+                // Add it to the User's Ecosystem (Vault A)
+                await set(ref(db, `users/${uid}/ecosystem/${hwid}`), {
+                    hwid: hwid,
+                    model: model,
+                    name: name
+                });
+                console.log("🎉 Device successfully claimed to your cloud account!");
+                return { success: true };
+            } else {
+                return { success: false, message: "⚠️ This device is already registered to another account. Please factory reset the physical device first." };
+            }
+        } catch (error) {
+            console.error("Claiming error:", error);
+            return { success: false, message: "Permission denied or network error." };
+        }
+    },
+
+    // 4. LOCAL ADDITION (Helper for Building the Object)
+    addDeviceLocal(hwid, model, name) {
         if (!this.devices[hwid]) {
             this.devices[hwid] = {
                 hwid: hwid,
@@ -96,14 +249,30 @@ export const DeviceStore = {
         this.save();
     },
 
-    removeDevice(hwid) {
+    // 5. REMOVE DEVICE (With Cloud Wipe)
+    async removeDevice(hwid) {
         if (this.devices[hwid]) {
             delete this.devices[hwid];
+            
             if (this.activeDeviceId === hwid) {
                 const keys = Object.keys(this.devices);
                 this.activeDeviceId = keys.length > 0 ? keys[0] : null;
             }
             this.save();
+
+            // Cloud removal protocol
+            if (!IdentityStore.isGuest && IdentityStore.currentUser) {
+                const uid = IdentityStore.currentUser.uid;
+                try {
+                    // 1. Remove from User Ecosystem (Vault A)
+                    await set(ref(db, `users/${uid}/ecosystem/${hwid}`), null);
+                    // 2. Remove claim from Device (Vault B) - Make it an orphan again
+                    await set(ref(db, `devices/${hwid}/ownerUid`), null);
+                    console.log(`☁️ Device ${hwid} removed from cloud account.`);
+                } catch(e) {
+                    console.error("Failed to remove device from cloud", e);
+                }
+            }
         }
     },
 
@@ -133,7 +302,6 @@ export const DeviceStore = {
                 const d = toArray(newMetrics.dailyData, 30, 0);
                 const awake = toArray(newMetrics.awakeData, 24, 1);
 
-                // 1. Calculate what is currently saved in the Firebase Array
                 let sumOfFirebaseHours = 0;
                 for (let i = 0; i < 24; i++) {
                     if (h[i] > 60) h[i] = 60;
@@ -143,19 +311,13 @@ export const DeviceStore = {
                 let todayTotal = sumOfFirebaseHours;
                 const currentHour = new Date().getHours();
 
-                // 🔥 THE FIX: Calculate the delta between the Live Total and the Firebase Array
                 if (newMetrics.liveActiveMins !== undefined && newMetrics.liveActiveMins > sumOfFirebaseHours) {
                     const unpushedMinutes = newMetrics.liveActiveMins - sumOfFirebaseHours;
-                    
-                    // Add only the unpushed minutes to the current hour on the graph
                     h[currentHour] += unpushedMinutes;
                     if (h[currentHour] > 60) h[currentHour] = 60; 
-                    
-                    // Set the text total to the true live master total
                     todayTotal = newMetrics.liveActiveMins;
                 }
 
-                // Inject the true live total into the 7-Day and 30-Day graphs
                 d[0] = Math.max(d[0] || 0, todayTotal);
 
                 let weekTotal = 0;
@@ -223,16 +385,15 @@ export const DeviceStore = {
 
     save() {
         try {
+            // We always save to localStorage as a fallback/cache
             localStorage.setItem("aquasync_ecosystem", JSON.stringify(this.devices));
             if (this.activeDeviceId) {
                 localStorage.setItem("aquasync_active_hwid", this.activeDeviceId);
             } else {
                 localStorage.removeItem("aquasync_active_hwid");
             }
-            console.log("💾 DeviceStore safely secured in browser storage.");
         } catch (error) {
             console.error("Failed to save device store to localStorage", error);
         }
     }
 };
-
