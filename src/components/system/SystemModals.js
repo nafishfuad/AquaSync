@@ -4,6 +4,9 @@ export function showSystemActionModal(type, deviceName, onConfirm) {
     const slot = document.getElementById("slot-global-overlays");
     if (!slot) return;
 
+    // 🔥 THE FIX: Elevate the container above the Top Nav
+    slot.style.zIndex = "500";
+
     const isReset = type === 'reset';
     const title = isReset ? 'Factory Reset' : 'System Reboot';
     const icon = isReset ? '🧨' : '🔄';
@@ -12,31 +15,22 @@ export function showSystemActionModal(type, deviceName, onConfirm) {
         : `Are you sure you want to reboot <span class="text-white font-bold">${deviceName}</span>? The lights and relays will briefly reset.`;
     const btnText = isReset ? 'Yes, Wipe Device' : 'Yes, Reboot';
 
-    // Safe styling classes to ensure Tailwind compiles them correctly
     const glowClass = isReset ? 'bg-red-500/20' : 'bg-amber-500/20';
     const iconBorder = isReset ? 'border-red-500/30' : 'border-amber-500/30';
     const iconShadow = isReset ? 'shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'shadow-[0_0_15px_rgba(245,158,11,0.2)]';
     const confirmBtnClass = isReset 
-        ? 'bg-red-500/10 border-red-500/50 text-red-400 hover:bg-red-500 hover:text-white' 
-        : 'bg-amber-500/10 border-amber-500/50 text-amber-400 hover:bg-amber-500 hover:text-white';
-
-    // Detect light/dark theme for the modal background
-    const isLight = document.body.classList.contains("light-theme");
-    const bgClass = isLight ? 'bg-white border-slate-200' : 'bg-cardbg border-gray-800';
-    const titleClass = isLight ? 'text-slate-900' : 'text-white';
+        ? 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500 hover:text-white' 
+        : 'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500 hover:text-white';
 
     slot.innerHTML = `
-        <div class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[500] px-4 animate-fade-in" id="system-action-overlay">
-            <div class="${bgClass} border rounded-3xl p-6 w-full max-w-sm shadow-2xl relative overflow-hidden">
-                
-                <div class="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 ${glowClass} blur-3xl rounded-full pointer-events-none"></div>
-
+        <div id="system-action-overlay" class="absolute inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in pointer-events-auto">
+            <div class="bg-cardbg rounded-3xl p-6 shadow-2xl border border-gray-800 w-full max-w-sm relative overflow-hidden transform transition-all animate-slide-up-in">
                 <div class="flex flex-col items-center text-center relative z-10">
-                    <div class="w-16 h-16 bg-[#121212] border ${iconBorder} rounded-2xl flex items-center justify-center text-3xl mb-4 ${iconShadow}">
+                    <div class="w-16 h-16 ${glowClass} rounded-full flex items-center justify-center text-3xl mb-4 border ${iconBorder} ${iconShadow}">
                         ${icon}
                     </div>
                     
-                    <h2 class="text-xl font-bold ${titleClass} tracking-wide mb-2">${title}</h2>
+                    <h2 class="text-xl font-bold text-white tracking-wide mb-2">${title}</h2>
                     <p class="text-xs text-gray-400 leading-relaxed mb-8 px-2">${desc}</p>
 
                     <div class="flex gap-3 w-full">
@@ -56,6 +50,8 @@ export function showSystemActionModal(type, deviceName, onConfirm) {
     slot.classList.add("flex");
 
     const close = () => {
+        // 🔥 THE FIX: Reset the z-index so the welcome screen works normally again
+        slot.style.zIndex = "";
         slot.classList.add("hidden");
         slot.classList.remove("flex");
         slot.innerHTML = "";
@@ -63,13 +59,16 @@ export function showSystemActionModal(type, deviceName, onConfirm) {
 
     document.getElementById("btn-modal-cancel").onclick = close;
     
-    // Close if clicking the background blur
     document.getElementById("system-action-overlay").onclick = (e) => {
         if (e.target.id === 'system-action-overlay') close();
     };
 
     document.getElementById("btn-modal-confirm").onclick = () => {
-        close();
-        onConfirm(); // Execute the actual API call and UI updates
+        const btn = document.getElementById("btn-modal-confirm");
+        btn.innerHTML = `<span class="animate-spin inline-block mr-2">⏳</span> Executing...`;
+        btn.classList.add("opacity-50", "pointer-events-none");
+        document.getElementById("btn-modal-cancel").classList.add("hidden");
+        
+        onConfirm();
     };
 }

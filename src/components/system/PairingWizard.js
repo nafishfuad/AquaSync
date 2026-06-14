@@ -9,12 +9,9 @@ export function setupDemoDevice() {
     DeviceStore.addDevice(demoId, "AS-Standard", "Virtual Demo Tank");
     
     const dev = DeviceStore.devices[demoId];
-    
-    // Tag as fake
     dev.isDummy = true;
     dev.network.isWiFiConnected = true;
     
-    // Seed realistic metrics
     dev.metrics.isAutoMode = true;
     dev.metrics.isLightOn = true;
     dev.metrics.currentBrightness = 85;
@@ -25,7 +22,6 @@ export function setupDemoDevice() {
     dev.metrics.fanSpeed = 60;
     dev.metrics.isCO2ScheduleSeparate = true;
     
-    // Inject a beautiful preset Analytics Graph so the Insights page isn't empty!
     dev.analyticsData = {
         today: {
             totalActive: "08h 30m",
@@ -56,6 +52,7 @@ export function renderPairingWizard(onComplete) {
     const template = document.getElementById("tpl-pairing-wizard");
     if (!template || !slot) return;
 
+    slot.style.zIndex = "500";
     slot.innerHTML = "";
     const clone = template.content.cloneNode(true);
     
@@ -88,6 +85,7 @@ export function renderPairingWizard(onComplete) {
         clearInterval(heartbeatInterval);
         
         slot.innerHTML = "";
+        slot.style.zIndex = "";
 
         if (Object.keys(DeviceStore.devices).length === 0) {
             renderEmptyState();
@@ -132,7 +130,6 @@ export function renderPairingWizard(onComplete) {
     });
 }
 
-// Renders the initial "No Devices Linked" screen
 export function renderEmptyState() {
     const slot = document.getElementById("slot-global-overlays");
     const template = document.getElementById("tpl-empty-splash");
@@ -141,11 +138,13 @@ export function renderEmptyState() {
     slot.innerHTML = "";
     const clone = template.content.cloneNode(true);
     
-    // 🔥 THE FIX: Search the template BEFORE we put it on screen, fallback to ANY button to guarantee it works
-    let targetBtn = clone.querySelector("#btn-start-discovery") || clone.querySelector("button");
-    
-    if (targetBtn) {
-        targetBtn.addEventListener("click", () => {
+    slot.classList.remove("hidden");
+    slot.classList.add("flex");
+    slot.appendChild(clone);
+
+    const startBtn = document.getElementById("btn-start-discovery");
+    if (startBtn) {
+        startBtn.addEventListener("click", () => {
             renderPairingWizard(() => {
                 slot.classList.add("hidden");
                 slot.classList.remove("flex");
@@ -153,17 +152,12 @@ export function renderEmptyState() {
             });
         });
 
-        // Inject the Demo Button right below the Pair button dynamically!
+        // 🔥 THE FIX: Perfectly mirrored classes and innerHTML spans to guarantee identical line height
         const demoBtn = document.createElement("button");
         demoBtn.className = "w-full bg-[#121212] border border-gray-700 hover:bg-gray-800 text-gray-300 font-bold py-3.5 rounded-xl text-[11px] uppercase tracking-widest transition-all active:scale-95 shadow-sm mt-3 flex items-center justify-center";
-        demoBtn.innerHTML = `<span class="mr-2 text-purple-400 text-base">🎮</span> Simulate Demo Tank`;
+        demoBtn.innerHTML = `<span class="text-lg mr-2 text-purple-400">🎮</span> Simulate Demo Tank`;
         demoBtn.onclick = () => setupDemoDevice();
         
-        targetBtn.parentNode.insertBefore(demoBtn, targetBtn.nextSibling);
+        startBtn.parentNode.insertBefore(demoBtn, startBtn.nextSibling);
     }
-
-    // Append to live DOM
-    slot.classList.remove("hidden");
-    slot.classList.add("flex");
-    slot.appendChild(clone);
 }

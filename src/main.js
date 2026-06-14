@@ -13,11 +13,25 @@ const AquaSync = {
         console.log("🌊 AquaSync Ecosystem Initializing...");
         DeviceStore.init();
         
-        // 🔥 THE FIX: Use Optional Chaining (?.) to prevent fatal crashes if HTML tags load asynchronously
         if (Object.keys(DeviceStore.devices).length === 0) {
-            document.querySelector("main")?.classList.add("hidden");
-            document.querySelector("nav")?.classList.add("hidden"); 
-            document.getElementById("slot-top-nav")?.classList.remove("hidden");
+            // Hide the app pages
+            ['page-insights', 'page-control', 'page-color', 'page-network'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
+
+            // Hide the bottom tab bar
+            document.querySelectorAll("nav").forEach(nav => {
+                if (nav.id !== "slot-top-nav") nav.classList.add("hidden");
+            });
+
+            // 🔥 THE FIX: Force the Top Nav to be visible AND elevate it above the splash overlay!
+            const topNav = document.getElementById("slot-top-nav");
+            if (topNav) {
+                topNav.classList.remove("hidden");
+                topNav.style.display = "block"; 
+                topNav.style.zIndex = "400";
+            }
             
             initTopNav(); 
             renderEmptyState();
@@ -61,7 +75,9 @@ const AquaSync = {
             targetNav.classList.remove('text-gray-500');
         }
         
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (typeof window !== 'undefined' && window.event && window.event.type === 'click') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
     },
 
     setConnectionStatus(status) {
