@@ -134,10 +134,20 @@ export const DeviceStore = {
                 const awake = toArray(newMetrics.awakeData, 24, 1);
 
                 let todayTotal = 0;
+                const currentHour = new Date().getHours();
+
                 for (let i = 0; i < 24; i++) {
+                    // 🔥 THE FIX 1: Inject the live running minutes directly from Firebase into the current hour!
+                    if (i === currentHour && newMetrics.liveActiveMins !== undefined) {
+                        h[i] = Math.max(h[i], newMetrics.liveActiveMins);
+                    }
+
                     if (h[i] > 60) h[i] = 60;
                     todayTotal += h[i];
                 }
+
+                // 🔥 THE FIX 2: Inject the live 'todayTotal' into the daily array so the 7-Day and 30-Day graphs update in real-time!
+                d[0] = Math.max(d[0] || 0, todayTotal);
 
                 let weekTotal = 0;
                 const weekGraphData = [];
