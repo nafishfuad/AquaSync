@@ -253,6 +253,9 @@ const AquaSync = {
         buildInsightsPanel(device);
         buildColorPanel(device, commandHook);
         buildSystemPanel(device, API, commandHook);
+
+        // 🔥 THE GREY DOT FIX: Force the UI to re-apply the active network color AFTER the templates redraw!
+        this.setConnectionStatus(this.currentStatus || 'offline');
     }
 };
 

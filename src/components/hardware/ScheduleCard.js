@@ -62,7 +62,7 @@ export function renderSchedulesStack(container, device, commandHook) {
         return card;
     };
 
-    // 🔥 THE FIX: Centralized Stepper Binding to prevent negative math bugs
+    // Centralized Stepper Binding
     const bindStepper = (id, key, currentVal, step, min, max) => {
         const subBtn = wrapper.querySelector(`#${id}-sub`);
         const addBtn = wrapper.querySelector(`#${id}-add`);
@@ -114,19 +114,6 @@ export function renderSchedulesStack(container, device, commandHook) {
             bindStepper('sunrise', 'sunriseMins', m.sunriseMins, 5, 0, 120);
             bindStepper('sunset', 'sunsetMins', m.sunsetMins, 5, 0, 120);
         }
-
-        const recoveryHTML = `
-            <p class="text-[10px] text-gray-500 mb-4 leading-relaxed">When power returns, the system will slowly ramp up the lights to avoid shocking the fish.</p>
-            <div>
-                <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Recovery Ramp Time</label>
-                <div class="w-1/2">
-                    ${createStepper('recovery', m.recoveryMins, 'min')}
-                </div>
-            </div>
-        `;
-        const recCard = createCard('Load Shedding Safety', '<span class="text-red-500 text-lg">⚡</span>', 'border-red-900/50', false, true, null, null, recoveryHTML);
-        recCard.insertAdjacentHTML('afterbegin', `<div class="absolute -top-10 -right-10 w-32 h-32 bg-red-500 opacity-5 rounded-full blur-2xl pointer-events-none"></div>`);
-        bindStepper('recovery', 'recoveryMins', m.recoveryMins, 5, 0, 60);
     }
 
     // --- 2. SEPARATE CO2 (Only render if hasCO2) ---
@@ -180,5 +167,21 @@ export function renderSchedulesStack(container, device, commandHook) {
             fanCard.querySelector('#inp-fan-end').onchange = (e) => commandHook({ fanOffTime: e.target.value });
             fanCard.querySelector('#inp-fan-speed').onchange = (e) => commandHook({ fanSpeed: parseInt(e.target.value) });
         }
+    }
+
+    // --- 4. LOAD SHEDDING SAFETY (Moved to the absolute bottom!) ---
+    if (cap.hasLight) {
+        const recoveryHTML = `
+            <p class="text-[10px] text-gray-500 mb-4 leading-relaxed">When power returns, the system will slowly ramp up the lights to avoid shocking the fish.</p>
+            <div>
+                <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Recovery Ramp Time</label>
+                <div class="w-1/2">
+                    ${createStepper('recovery', m.recoveryMins, 'min')}
+                </div>
+            </div>
+        `;
+        const recCard = createCard('Load Shedding Safety', '<span class="text-red-500 text-lg">⚡</span>', 'border-red-900/50', false, true, null, null, recoveryHTML);
+        recCard.insertAdjacentHTML('afterbegin', `<div class="absolute -top-10 -right-10 w-32 h-32 bg-red-500 opacity-5 rounded-full blur-2xl pointer-events-none"></div>`);
+        bindStepper('recovery', 'recoveryMins', m.recoveryMins, 5, 0, 60);
     }
 }
