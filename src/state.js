@@ -6,21 +6,6 @@ function formatTime(minutes) {
     return `${h}h ${m}m`;
 }
 
-// 🔥 THE FIX: Helper function to safely convert Firebase sparse objects back to true arrays
-function toArray(data, length, defaultVal) {
-    if (Array.isArray(data)) return data;
-    if (typeof data === "object" && data !== null) {
-        const arr = Array(length).fill(defaultVal);
-        for (let key in data) {
-            if (!isNaN(key) && key < length) {
-                arr[parseInt(key)] = data[key];
-            }
-        }
-        return arr;
-    }
-    return Array(length).fill(defaultVal);
-}
-
 export const DeviceStore = {
     activeDeviceId: null,
     devices: {},
@@ -33,6 +18,7 @@ export const DeviceStore = {
                 for (let hwid in this.devices) {
                     let dev = this.devices[hwid];
                     
+                    // Safety check to ensure existing devices get the new companion object
                     if (!dev.companion) {
                         dev.companion = { current: "v2.0.0", latest: "Checking...", downloadUrl: "" };
                     }
@@ -111,26 +97,32 @@ export const DeviceStore = {
     updateDeviceState(hwid, newMetrics, newCapabilities = null) {
         if (!this.devices[hwid] || !newMetrics) return;
 
+        // 🔥 THE FIX: Extract the true firmware version if the ESP32 sent it!
         if (newMetrics.fw_version) {
             this.devices[hwid].firmware.current = newMetrics.fw_version;
         }
         
+        // 1. Secure Merge: Combine incoming Firebase data with existing Local Storage data
         this.devices[hwid].metrics = { ...this.devices[hwid].metrics, ...newMetrics };
         if (newMetrics.deviceName) this.devices[hwid].name = newMetrics.deviceName;
 
+        // 2. Extract the merged metrics to guarantee we always have data for the graphs
         const mergedMetrics = this.devices[hwid].metrics;
 
+        // 3. Process Analytics safely using fallbacks if the ESP32 hasn't sent them yet
         if (mergedMetrics.hourlyData || mergedMetrics.dailyData) {
             
-            // 🔥 THE FIX: Force Firebase Objects safely back into true Arrays
-            const hourly = toArray(mergedMetrics.hourlyData, 24, 0);
-            const awake = toArray(mergedMetrics.awakeData, 24, 1);
-            const daily = toArray(mergedMetrics.dailyData, 30, 0);
+            // Fallback to arrays of zeros if data is temporarily missing
+            const hourly = mergedMetrics.hourlyData || Array(24).fill(0);
+            const awake = mergedMetrics.awakeData || Array(24).fill(1);
+            const daily = mergedMetrics.dailyData || Array(30).fill(0);
 
+            // 🔥 LIVE TIME FIX: Use the exact integer from the ESP32 if available
             let todayTotal = mergedMetrics.liveActiveMins !== undefined 
                 ? mergedMetrics.liveActiveMins 
                 : hourly.reduce((a, b) => a + b, 0);
             
+            // 🔥 LIVE SYNTHETIC MINUTES: UI injection for instant feedback on boot
             if (mergedMetrics.isLightOn && todayTotal === 0) {
                 todayTotal = new Date().getMinutes(); 
             }
@@ -177,6 +169,7 @@ export const DeviceStore = {
             this.devices[hwid].capabilities = { ...this.devices[hwid].capabilities, ...newCapabilities };
         }
         
+        // 4. Save the freshly calculated graphs permanently to browser Local Storage
         this.save();
     },
 
