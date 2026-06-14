@@ -237,6 +237,27 @@ public:
         client.setInsecure();
         HTTPClient http;
 
+        // 🔥 THE CLOUD OVERRIDE CHECK
+        Preferences p;
+        p.begin("aqua-ctrl", false);
+        if (p.getBool("nuke_cloud", false)) {
+            Serial.println("[SEC] 🚨 Executing Cloud Override Sever Command...");
+            http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/ownerUid.json");
+            http.addHeader("Content-Type", "application/json");
+            
+            // Send a DELETE request to wipe the ownerUid, turning it into an orphan
+            int response = http.sendRequest("DELETE");
+            
+            if (response == 200) {
+                Serial.println("[SEC] ✅ Cloud Lock severed. Device is now an Orphan.");
+                p.putBool("nuke_cloud", false); // Clear the flag, job is done.
+            }
+            http.end();
+            p.end();
+            return; // Skip normal syncing for this tick until next loop
+        }
+        p.end();
+
         if (!_hasFetchedInitialConfig) {
             bool offlineChangesExist = _settingsMgr.needsFirebaseSync();
             http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
