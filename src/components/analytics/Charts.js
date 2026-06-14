@@ -18,7 +18,6 @@ export function renderCharts(container, analyticsData) {
   Chart.defaults.plugins.legend.display = false;
 
   const styleTimeStr = (str, colorClass = "text-white") => {
-    // 🔥 FATAL CRASH FIX: Protect against undefined/null data from old memory
     if (!str) str = "00h 00m"; 
     
     const match = String(str).match(/(\d{2})h (\d{2})m/);
@@ -191,15 +190,16 @@ export function renderCharts(container, analyticsData) {
             pointRadius: 0,
             segment: {
               borderColor: (ctx) => {
+                // 1. If it's a flat OFF horizontal line
                 if (ctx.p0.parsed.y === 0 && ctx.p1.parsed.y === 0)
                   return isLightMode ? "#e2e8f0" : "#1f2937";
+                
+                // 2. If it's a flat ON horizontal line
                 if (ctx.p0.parsed.y === 1 && ctx.p1.parsed.y === 1)
                   return segmentColors[ctx.p0DataIndex];
-                return (
-                  segmentColors[
-                    ctx.p0.parsed.y === 1 ? ctx.p0DataIndex : ctx.p1DataIndex
-                  ] || "#00f2fe"
-                );
+                
+                // 🔥 THE FIX: If Y changes (Vertical Jump), force it to be a neutral structural line!
+                return isLightMode ? "#e2e8f0" : "#1f2937"; 
               },
             },
           },
