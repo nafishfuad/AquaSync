@@ -17,16 +17,17 @@ private:
     HardwareEngine& _hwEngine; 
     String _hwid;
     
-    // --- Delta Sync Shadow Memory ---
     TankSettings _shadow; 
     bool _shadowInit = false;
 
-    unsigned long _lastFirebasePull = 0;
+    // 🔥 OPTIMIZATION A: Initialize to a negative offset so the command fetch fires INSTANTLY on boot!
+    unsigned long _lastFirebasePull = -15000; 
     unsigned long _lastHeartbeat = 0;
     unsigned long _lastAnalyticsPush = 0;
     unsigned long _lastCommandReceivedTime = 0;
     
     bool _hasFetchedInitialConfig = false;
+    int _lastPushedDayOfYear = -1;
 
     String getLogTime() {
         time_t now = time(nullptr);
@@ -48,15 +49,11 @@ private:
         _server.send(204, "text/plain", "");
     }
     
-    // ---------------------------------------------------------
-    // THE MASTER DELTA GENERATOR (Massive Bandwidth Saver)
-    // ---------------------------------------------------------
     String generateDeltaStateJson() {
         JsonDocument doc;
         TankSettings& s = _settingsMgr.get();
         int changes = 0;
 
-        // 1. One-Time Boot Data
         if (!_shadowInit) {
             doc["v"] = CURRENT_SCHEMA_VERSION;
             doc["localIP"] = WiFi.localIP().toString();
@@ -65,7 +62,6 @@ private:
             changes++;
         }
 
-        // 2. Volatile Booleans & Integers (Only send if changed)
         if (!_shadowInit || s.isAutoMode != _shadow.isAutoMode) { doc["isAutoMode"] = s.isAutoMode; _shadow.isAutoMode = s.isAutoMode; changes++; }
         if (!_shadowInit || s.isLightOn != _shadow.isLightOn) { doc["isLightOn"] = s.isLightOn; _shadow.isLightOn = s.isLightOn; changes++; }
         if (!_shadowInit || s.isCO2On != _shadow.isCO2On) { doc["isCO2On"] = s.isCO2On; _shadow.isCO2On = s.isCO2On; changes++; }
@@ -83,8 +79,6 @@ private:
         if (!_shadowInit || s.totalLoadSheddingToday != _shadow.totalLoadSheddingToday) { doc["totalLoadSheddingToday"] = s.totalLoadSheddingToday; _shadow.totalLoadSheddingToday = s.totalLoadSheddingToday; changes++; }
         if (!_shadowInit || s.lightLoadSheddingToday != _shadow.lightLoadSheddingToday) { doc["lightLoadSheddingToday"] = s.lightLoadSheddingToday; _shadow.lightLoadSheddingToday = s.lightLoadSheddingToday; changes++; }
 
-        // 3. Strings
-        // 🔥 THE FIX: Replaced all 'strncpy' with the memory-safe 'strlcpy'
         if (!_shadowInit || String(s.deviceName) != String(_shadow.deviceName)) { doc["deviceName"] = s.deviceName; strlcpy(_shadow.deviceName, s.deviceName, sizeof(_shadow.deviceName)); changes++; }
         if (!_shadowInit || String(s.startTime) != String(_shadow.startTime)) { doc["startTime"] = s.startTime; strlcpy(_shadow.startTime, s.startTime, sizeof(_shadow.startTime)); changes++; }
         if (!_shadowInit || String(s.co2OnTime) != String(_shadow.co2OnTime)) { doc["co2OnTime"] = s.co2OnTime; strlcpy(_shadow.co2OnTime, s.co2OnTime, sizeof(_shadow.co2OnTime)); changes++; }
@@ -92,7 +86,6 @@ private:
         if (!_shadowInit || String(s.fanOnTime) != String(_shadow.fanOnTime)) { doc["fanOnTime"] = s.fanOnTime; strlcpy(_shadow.fanOnTime, s.fanOnTime, sizeof(_shadow.fanOnTime)); changes++; }
         if (!_shadowInit || String(s.fanOffTime) != String(_shadow.fanOffTime)) { doc["fanOffTime"] = s.fanOffTime; strlcpy(_shadow.fanOffTime, s.fanOffTime, sizeof(_shadow.fanOffTime)); changes++; }
 
-        // 4. Arrays (Firebase Deep Pathing Magic)
         for(int i=0; i<24; i++) {
             if (!_shadowInit || s.activeMinutesToday[i] != _shadow.activeMinutesToday[i]) {
                 doc["hourlyData/" + String(i)] = s.activeMinutesToday[i];
@@ -244,7 +237,6 @@ public:
         client.setInsecure();
         HTTPClient http;
 
-        // PHASE 1: OFFLINE RESOLUTION & BOOT SYNC 
         if (!_hasFetchedInitialConfig) {
             bool offlineChangesExist = _settingsMgr.needsFirebaseSync();
             http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
@@ -259,10 +251,9 @@ public:
             }
             http.end();
             _hasFetchedInitialConfig = true;
-            _shadowInit = false; // Forces full structural sync on boot
+            _shadowInit = false; 
         }
 
-        // PHASE 2: COMMAND POLL & OTA
         if (now - _lastFirebasePull > 15000) {
             _lastFirebasePull = now;
             String cmdUrl = FIREBASE_URL + "/devices/" + _hwid + "/commands.json";
@@ -274,7 +265,6 @@ public:
                     JsonDocument cmdDoc;
                     if (!deserializeJson(cmdDoc, cmdPayload)) {
                         
-                        // 🔥 THE GHOST UPDATE FIX
                         if (cmdDoc.containsKey("ota_staged") && cmdDoc["ota_staged"].as<bool>() == false) {
                             http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
                             http.addHeader("Content-Type", "application/json");
@@ -336,7 +326,6 @@ public:
             http.end();
         }
 
-        // PHASE 3: HEARTBEAT
         if (now - _lastHeartbeat > 60000) {
             _lastHeartbeat = now;
             http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
@@ -345,13 +334,11 @@ public:
             http.end();
         }
 
-        // 🔥 PHASE 4: UNIVERSAL DELTA ENGINE
         bool isDebouncedPush = (_settingsMgr.needsFirebaseSync() && (now - _lastCommandReceivedTime > 5000)); 
         bool isHourlyPush = (now - _lastAnalyticsPush > 3600000);
 
         TankSettings& s = _settingsMgr.get();
 
-        // 🔥 THE FIX: Detect if the ESP32 changed its own hardware natively via the Schedule!
         bool isAutonomousChange = _shadowInit && (
             s.isLightOn != _shadow.isLightOn ||
             s.isCO2On != _shadow.isCO2On ||
@@ -359,8 +346,18 @@ public:
             s.currentBrightness != _shadow.currentBrightness
         );
 
-        // If a command came in, OR an hour passed, OR the autonomous schedule changed a light/dimmer value... PUSH IT!
-        if (!_shadowInit || isDebouncedPush || isHourlyPush || isAutonomousChange) {
+        bool isRolloverPush = false;
+        time_t nowTime = time(nullptr);
+        struct tm* timeinfo = localtime(&nowTime);
+        if (timeinfo->tm_year >= 120) {
+            int currentDayOfYear = timeinfo->tm_yday;
+            if (_lastPushedDayOfYear != -1 && currentDayOfYear != _lastPushedDayOfYear) {
+                isRolloverPush = true; 
+            }
+            _lastPushedDayOfYear = currentDayOfYear;
+        }
+
+        if (!_shadowInit || isDebouncedPush || isHourlyPush || isAutonomousChange || isRolloverPush) {
             TankSettings backupShadow = _shadow; 
             String deltaJson = generateDeltaStateJson();
 
