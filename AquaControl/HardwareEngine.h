@@ -9,6 +9,7 @@ class HardwareEngine {
 private:
     Preferences _prefs;
     bool _hasBooted = false;
+    bool _hasTimeBooted = false; // Tracks NTP Time sync
     bool _masterPowerState = false;
     
     float _currentActualPWM = 0.0;
@@ -32,6 +33,7 @@ private:
     bool _lastAutoLight = false;
     bool _lastAutoCO2 = false;
     bool _lastAutoFan = false;
+    bool _lastAutoModeState = true;
 
     // --- LED Blinker ---
     unsigned long _ledTimer = 0;
@@ -61,7 +63,19 @@ private:
     }
 
     void evaluateAutoSchedule(TankSettings& settings) {
-        if (!settings.isAutoMode) return;
+        // Track mode switches
+        if (!settings.isAutoMode) {
+            _lastAutoModeState = false; 
+            return;
+        }
+
+        // 🔥 THE FIX: If we just clicked "Resume Auto", clear all physical hardware locks instantly!
+        if (!_lastAutoModeState) {
+            _overrideLight = false;
+            _overrideCO2 = false;
+            _overrideFan = false;
+            _lastAutoModeState = true;
+        }
 
         time_t now = time(nullptr);
         struct tm* timeinfo = localtime(&now);
@@ -93,8 +107,10 @@ private:
             } else {
                 targetBright = maxB;
                 if (settings.isDimmerEnabled) {
-                    int sunriseSecs = settings.sunriseMins * 60;
-                    int sunsetSecs = settings.sunsetMins * 60;
+                    // 🔥 THE FIX: Use max(1, val) to mathematically prevent Division by Zero crashes
+                    int sunriseSecs = max(1, settings.sunriseMins * 60);
+                    int sunsetSecs  = max(1, settings.sunsetMins * 60);
+                    
                     if (evalSecs < startSecs + sunriseSecs) {
                         targetBright = ((float)(evalSecs - startSecs) / sunriseSecs) * maxB;
                     } else if (evalSecs > endSecs - sunsetSecs) {
@@ -198,7 +214,8 @@ public:
         struct tm* timeinfo = localtime(&nowTime);
         bool timeValid = (timeinfo->tm_year >= 120);
 
-        if (timeValid && !_hasBooted) {
+        // 🔥 THE FIX: Phase 1 Boot -> Load Memory instantly, even without Internet!
+        if (!_hasBooted) {
             _hasBooted = true;
             _prefs.getBytes("actMins", settings.activeMinutesToday, sizeof(settings.activeMinutesToday));
             _prefs.getBytes("awkMins", settings.awakeMinutesToday, sizeof(settings.awakeMinutesToday));
@@ -210,7 +227,11 @@ public:
             settings.totalLoadSheddingToday = _prefs.getInt("totLS", 0);
             settings.lightLoadSheddingToday = _prefs.getInt("lgtLS", 0);
             settings.lastTrackedDay = _prefs.getInt("lastDay", 0);
-            
+        }
+
+        // 🔥 THE FIX: Phase 2 Boot -> Wait for NTP Time to calculate Load Shedding
+        if (timeValid && !_hasTimeBooted) {
+            _hasTimeBooted = true;
             long lastBreadcrumb = _prefs.getLong("last_time", 0);
             if (lastBreadcrumb > 0 && nowTime > lastBreadcrumb && (nowTime - lastBreadcrumb) >= 60) {
                 int outageMins = max(1, (int)(nowTime - lastBreadcrumb) / 60);
@@ -255,18 +276,32 @@ public:
 
         if (timeValid && (nowMillis - _lastBreadcrumbTick >= 60000)) {
             _lastBreadcrumbTick = nowMillis;
-            _prefs.putLong("last_time", (long)nowTime);
-            if (settings.lastTrackedDay != 0 && settings.lastTrackedDay != timeinfo->tm_mday) {
+            
+            // Check how many days have passed mathematically
+            int currentDayOfYear = timeinfo->tm_yday; 
+            
+            if (settings.lastTrackedDay != 0 && settings.lastTrackedDay != currentDayOfYear) {
                 
-                // 🔥 CRITICAL FIX: Shift BOTH history arrays down by 1 Day
-                for (int i = 29; i > 0; i--) {
-                    settings.activeMinutesHistory[i] = settings.activeMinutesHistory[i-1];
-                    settings.awakeMinutesHistory[i] = settings.awakeMinutesHistory[i-1];
+                // 🔥 THE FIX: Calculate missed days (Handles power outages over 24+ hours securely)
+                int daysMissed = currentDayOfYear - settings.lastTrackedDay;
+                if (daysMissed < 0) daysMissed += 365; // Handle New Year rollover
+                if (daysMissed > 30) daysMissed = 30;  // Cap at array size
+                
+                // Shift History Arrays mathematically based on missed days
+                for (int i = 29; i >= daysMissed; i--) {
+                    settings.activeMinutesHistory[i] = settings.activeMinutesHistory[i - daysMissed];
+                    settings.awakeMinutesHistory[i] = settings.awakeMinutesHistory[i - daysMissed];
+                }
+                
+                // Backfill missed offline days with 0s
+                for (int i = 1; i < daysMissed; i++) {
+                    settings.activeMinutesHistory[i] = 0;
+                    settings.awakeMinutesHistory[i] = 0;
                 }
                 
                 uint16_t yTotal = 0;
                 uint16_t yAwake = 0;
-                for(int i=0; i<24; i++) { 
+                for(int i = 0; i < 24; i++) { 
                     yTotal += settings.activeMinutesToday[i]; 
                     yAwake += settings.awakeMinutesToday[i];
                     settings.activeMinutesToday[i] = 0; 
@@ -277,12 +312,14 @@ public:
                 settings.awakeMinutesHistory[0] = yAwake;
                 settings.totalLoadSheddingToday = 0; 
                 settings.lightLoadSheddingToday = 0;
-                settings.lastTrackedDay = timeinfo->tm_mday;
+                settings.lastTrackedDay = currentDayOfYear;
                 saveAnalyticsVault(settings);
+                
             } else if (settings.lastTrackedDay == 0) {
-                settings.lastTrackedDay = timeinfo->tm_mday;
+                settings.lastTrackedDay = currentDayOfYear;
             }
             
+            _prefs.putLong("last_time", (long)nowTime);
             settings.awakeMinutesToday[timeinfo->tm_hour] += 1;
             if (settings.isLightOn) settings.activeMinutesToday[timeinfo->tm_hour] += 1;
         }

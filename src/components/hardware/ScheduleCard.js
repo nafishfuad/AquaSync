@@ -2,6 +2,10 @@
 
 export function renderSchedulesStack(container, device, commandHook) {
     const m = device.metrics;
+    
+    // 🔥 THE FIX: Fallback capabilities object to prevent crashes on older devices
+    const cap = device.capabilities || { hasLight: true, hasCO2: true, hasFan: true };
+    
     container.innerHTML = `<div class="space-y-6 pb-10 mt-2"></div>`;
     const wrapper = container.querySelector('div');
 
@@ -58,119 +62,123 @@ export function renderSchedulesStack(container, device, commandHook) {
         return card;
     };
 
-    // --- 1. PRIMARY LIGHTING ---
-    const lightHTML = `
-        <div class="grid grid-cols-2 gap-4">
-            <div>
-                <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Start Time</label>
-                <input type="time" id="inp-start" value="${m.startTime}" class="w-full bg-[#121212] border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-400 transition-colors" />
-            </div>
-            <div>
-                <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Photoperiod</label>
-                ${createStepper('photo', m.photoperiod, 'hrs')}
-            </div>
-        </div>
-    `;
-    const lightCard = createCard('Primary Lighting', '<span class="text-amber-400 text-lg">☀️</span>', 'border-gray-800', false, true, null, null, lightHTML);
-    lightCard.querySelector('#inp-start').onchange = (e) => commandHook({ startTime: e.target.value });
-    lightCard.querySelector('#photo-sub').onclick = () => commandHook({ photoperiod: Math.max(1, m.photoperiod - 1) });
-    lightCard.querySelector('#photo-add').onclick = () => commandHook({ photoperiod: Math.min(24, m.photoperiod + 1) });
+    // 🔥 THE FIX: Centralized Stepper Binding to prevent negative math bugs
+    const bindStepper = (id, key, currentVal, step, min, max) => {
+        const subBtn = wrapper.querySelector(`#${id}-sub`);
+        const addBtn = wrapper.querySelector(`#${id}-add`);
+        if (subBtn) subBtn.onclick = () => commandHook({ [key]: Math.max(min, currentVal - step) });
+        if (addBtn) addBtn.onclick = () => commandHook({ [key]: Math.min(max, currentVal + step) });
+    };
 
-    // --- 2. CINEMATIC DIMMING ---
-    const dimmerHTML = `
-        <div>
-            <div class="flex justify-between mb-1">
-                <label class="text-[10px] text-gray-500 uppercase tracking-wider">Max Brightness</label>
-                <span class="text-xs text-aqua font-bold">${m.maxBrightness}%</span>
+    // --- 1. PRIMARY LIGHTING & DIMMING (Only render if hasLight) ---
+    if (cap.hasLight) {
+        const lightHTML = `
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Start Time</label>
+                    <input type="time" id="inp-start" value="${m.startTime}" class="w-full bg-[#121212] border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-400 transition-colors" />
+                </div>
+                <div>
+                    <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Photoperiod</label>
+                    ${createStepper('photo', m.photoperiod, 'hrs')}
+                </div>
             </div>
-            <input type="range" id="inp-max-bright" min="10" max="100" value="${m.maxBrightness}" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-aqua" />
-        </div>
-        <div class="grid grid-cols-2 gap-4">
+        `;
+        const lightCard = createCard('Primary Lighting', '<span class="text-amber-400 text-lg">☀️</span>', 'border-gray-800', false, true, null, null, lightHTML);
+        lightCard.querySelector('#inp-start').onchange = (e) => commandHook({ startTime: e.target.value });
+        bindStepper('photo', 'photoperiod', m.photoperiod, 1, 1, 24);
+
+        const dimmerHTML = `
             <div>
-                <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Sunrise Ramp</label>
-                ${createStepper('sunrise', m.sunriseMins, 'min')}
+                <div class="flex justify-between mb-1">
+                    <label class="text-[10px] text-gray-500 uppercase tracking-wider">Max Brightness</label>
+                    <span class="text-xs text-aqua font-bold">${m.maxBrightness}%</span>
+                </div>
+                <input type="range" id="inp-max-bright" min="10" max="100" value="${m.maxBrightness}" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-aqua" />
             </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Sunrise Ramp</label>
+                    ${createStepper('sunrise', m.sunriseMins, 'min')}
+                </div>
+                <div>
+                    <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Sunset Fade</label>
+                    ${createStepper('sunset', m.sunsetMins, 'min')}
+                </div>
+            </div>
+        `;
+        const dimCard = createCard('Cinematic Dimming', '<span class="text-aqua text-lg">🌊</span>', 'border-gray-800', true, m.isDimmerEnabled, 'isDimmerEnabled', 'Lights will instantly turn ON and OFF without ramping.', dimmerHTML);
+        
+        if (m.isDimmerEnabled) {
+            dimCard.querySelector('#inp-max-bright').onchange = (e) => commandHook({ maxBrightness: parseInt(e.target.value) });
+            bindStepper('sunrise', 'sunriseMins', m.sunriseMins, 5, 0, 120);
+            bindStepper('sunset', 'sunsetMins', m.sunsetMins, 5, 0, 120);
+        }
+
+        const recoveryHTML = `
+            <p class="text-[10px] text-gray-500 mb-4 leading-relaxed">When power returns, the system will slowly ramp up the lights to avoid shocking the fish.</p>
             <div>
-                <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Sunset Fade</label>
-                ${createStepper('sunset', m.sunsetMins, 'min')}
+                <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Recovery Ramp Time</label>
+                <div class="w-1/2">
+                    ${createStepper('recovery', m.recoveryMins, 'min')}
+                </div>
             </div>
-        </div>
-    `;
-    const dimCard = createCard('Cinematic Dimming', '<span class="text-aqua text-lg">🌊</span>', 'border-gray-800', true, m.isDimmerEnabled, 'isDimmerEnabled', 'Lights will instantly turn ON and OFF without ramping.', dimmerHTML);
-    if (m.isDimmerEnabled) {
-        dimCard.querySelector('#inp-max-bright').onchange = (e) => commandHook({ maxBrightness: parseInt(e.target.value) });
-        dimCard.querySelector('#sunrise-sub').onclick = () => commandHook({ sunriseMins: Math.max(0, m.sunriseMins - 5) });
-        dimCard.querySelector('#sunrise-add').onclick = () => commandHook({ sunriseMins: Math.min(120, m.sunriseMins + 5) });
-        dimCard.querySelector('#sunset-sub').onclick = () => commandHook({ sunsetMins: Math.max(0, m.sunsetMins - 5) });
-        dimCard.querySelector('#sunset-add').onclick = () => commandHook({ sunsetMins: Math.min(120, m.sunsetMins + 5) });
+        `;
+        const recCard = createCard('Load Shedding Safety', '<span class="text-red-500 text-lg">⚡</span>', 'border-red-900/50', false, true, null, null, recoveryHTML);
+        recCard.insertAdjacentHTML('afterbegin', `<div class="absolute -top-10 -right-10 w-32 h-32 bg-red-500 opacity-5 rounded-full blur-2xl pointer-events-none"></div>`);
+        bindStepper('recovery', 'recoveryMins', m.recoveryMins, 5, 0, 60);
     }
 
-    // --- 3. SEPARATE CO2 ---
-    const co2HTML = `
-        <div class="grid grid-cols-2 gap-4">
-            <div>
-                <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">CO2 ON</label>
-                <input type="time" id="inp-co2-start" value="${m.co2OnTime}" class="w-full bg-[#121212] border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-green-400" />
+    // --- 2. SEPARATE CO2 (Only render if hasCO2) ---
+    if (cap.hasCO2) {
+        const co2HTML = `
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">CO2 ON</label>
+                    <input type="time" id="inp-co2-start" value="${m.co2OnTime}" class="w-full bg-[#121212] border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-green-400" />
+                </div>
+                <div>
+                    <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">CO2 OFF</label>
+                    <input type="time" id="inp-co2-end" value="${m.co2OffTime}" class="w-full bg-[#121212] border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-green-400" />
+                </div>
             </div>
-            <div>
-                <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">CO2 OFF</label>
-                <input type="time" id="inp-co2-end" value="${m.co2OffTime}" class="w-full bg-[#121212] border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-green-400" />
-            </div>
-        </div>
-    `;
-    const co2Card = createCard('Separate CO2 Schedule', '<span class="text-green-400 text-lg">🫧</span>', 'border-gray-800', true, m.isCO2ScheduleSeparate, 'isCO2ScheduleSeparate', 'Currently syncing perfectly with the primary lighting schedule.', co2HTML);
-    if (m.isCO2ScheduleSeparate) {
-        co2Card.querySelector('#inp-co2-start').onchange = (e) => commandHook({ co2OnTime: e.target.value });
-        co2Card.querySelector('#inp-co2-end').onchange = (e) => commandHook({ co2OffTime: e.target.value });
+        `;
+        const co2Card = createCard('Separate CO2 Schedule', '<span class="text-green-400 text-lg">🫧</span>', 'border-gray-800', true, m.isCO2ScheduleSeparate, 'isCO2ScheduleSeparate', 'Currently syncing perfectly with the primary lighting schedule.', co2HTML);
+        if (m.isCO2ScheduleSeparate) {
+            co2Card.querySelector('#inp-co2-start').onchange = (e) => commandHook({ co2OnTime: e.target.value });
+            co2Card.querySelector('#inp-co2-end').onchange = (e) => commandHook({ co2OffTime: e.target.value });
+        }
     }
 
-// --- 4. SURFACE COOLING (FAN) ---
-    const fanHTML = `
-        <div class="grid grid-cols-2 gap-4 mb-4">
-            <div>
-                <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Fan Start</label>
-                <input type="time" id="inp-fan-start" value="${m.fanOnTime}" class="w-full bg-[#121212] border border-gray-700 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-blue-500" />
+    // --- 3. SURFACE COOLING (Only render if hasFan) ---
+    if (cap.hasFan) {
+        const fanHTML = `
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Fan Start</label>
+                    <input type="time" id="inp-fan-start" value="${m.fanOnTime}" class="w-full bg-[#121212] border border-gray-700 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                    <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Fan End</label>
+                    <input type="time" id="inp-fan-end" value="${m.fanOffTime}" class="w-full bg-[#121212] border border-gray-700 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-blue-500" />
+                </div>
             </div>
             <div>
-                <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Fan End</label>
-                <input type="time" id="inp-fan-end" value="${m.fanOffTime}" class="w-full bg-[#121212] border border-gray-700 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-blue-500" />
+                <div class="flex justify-between items-center mb-1">
+                    <label class="text-[10px] text-gray-500 uppercase tracking-wider">Fan Speed</label>
+                    <span class="text-xs font-bold text-blue-400">${m.fanSpeed}%</span>
+                </div>
+                <input type="range" id="inp-fan-speed" min="20" max="100" step="5" value="${m.fanSpeed}" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500" />
             </div>
-        </div>
-        <div>
-            <div class="flex justify-between items-center mb-1">
-                <label class="text-[10px] text-gray-500 uppercase tracking-wider">Fan Speed</label>
-                <span class="text-xs font-bold text-blue-400">${m.fanSpeed}%</span>
-            </div>
-            <input type="range" id="inp-fan-speed" min="20" max="100" step="5" value="${m.fanSpeed}" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500" />
-        </div>
-    `;
-    
-    const fanCard = createCard('Surface Cooling', '<span class="text-blue-400 text-lg">❄️</span>', 'border-blue-900/50', true, m.isFanEnabled, 'isFanEnabled', 'Cooling fan schedule is disabled.', fanHTML);
-    
-    // 🔥 THE FIX: Safely inject the glow without killing the toggle listeners
-    fanCard.insertAdjacentHTML('afterbegin', `<div class="absolute -top-10 -right-10 w-32 h-32 bg-blue-500 opacity-5 rounded-full blur-2xl pointer-events-none"></div>`);
-    
-    if (m.isFanEnabled) {
-        fanCard.querySelector('#inp-fan-start').onchange = (e) => commandHook({ fanOnTime: e.target.value });
-        fanCard.querySelector('#inp-fan-end').onchange = (e) => commandHook({ fanOffTime: e.target.value });
-        fanCard.querySelector('#inp-fan-speed').onchange = (e) => commandHook({ fanSpeed: parseInt(e.target.value) });
+        `;
+        
+        const fanCard = createCard('Surface Cooling', '<span class="text-blue-400 text-lg">❄️</span>', 'border-blue-900/50', true, m.isFanEnabled, 'isFanEnabled', 'Cooling fan schedule is disabled.', fanHTML);
+        fanCard.insertAdjacentHTML('afterbegin', `<div class="absolute -top-10 -right-10 w-32 h-32 bg-blue-500 opacity-5 rounded-full blur-2xl pointer-events-none"></div>`);
+        
+        if (m.isFanEnabled) {
+            fanCard.querySelector('#inp-fan-start').onchange = (e) => commandHook({ fanOnTime: e.target.value });
+            fanCard.querySelector('#inp-fan-end').onchange = (e) => commandHook({ fanOffTime: e.target.value });
+            fanCard.querySelector('#inp-fan-speed').onchange = (e) => commandHook({ fanSpeed: parseInt(e.target.value) });
+        }
     }
-
-    // --- 5. LOAD SHEDDING SAFETY ---
-    const recoveryHTML = `
-        <p class="text-[10px] text-gray-500 mb-4 leading-relaxed">When power returns, the system will slowly ramp up the lights to avoid shocking the fish.</p>
-        <div>
-            <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Recovery Ramp Time</label>
-            <div class="w-1/2">
-                ${createStepper('recovery', m.recoveryMins, 'min')}
-            </div>
-        </div>
-    `;
-    const recCard = createCard('Load Shedding Safety', '<span class="text-red-500 text-lg">⚡</span>', 'border-red-900/50', false, true, null, null, recoveryHTML);
-    
-    // 🔥 THE FIX: Safely inject the glow without killing the stepper listeners
-    recCard.insertAdjacentHTML('afterbegin', `<div class="absolute -top-10 -right-10 w-32 h-32 bg-red-500 opacity-5 rounded-full blur-2xl pointer-events-none"></div>`);
-    
-    recCard.querySelector('#recovery-sub').onclick = () => commandHook({ recoveryMins: Math.max(0, m.recoveryMins - 5) });
-    recCard.querySelector('#recovery-add').onclick = () => commandHook({ recoveryMins: Math.min(60, m.recoveryMins + 5) });
 }

@@ -84,12 +84,13 @@ private:
         if (!_shadowInit || s.lightLoadSheddingToday != _shadow.lightLoadSheddingToday) { doc["lightLoadSheddingToday"] = s.lightLoadSheddingToday; _shadow.lightLoadSheddingToday = s.lightLoadSheddingToday; changes++; }
 
         // 3. Strings
-        if (!_shadowInit || String(s.deviceName) != String(_shadow.deviceName)) { doc["deviceName"] = s.deviceName; strncpy(_shadow.deviceName, s.deviceName, sizeof(_shadow.deviceName)); changes++; }
-        if (!_shadowInit || String(s.startTime) != String(_shadow.startTime)) { doc["startTime"] = s.startTime; strncpy(_shadow.startTime, s.startTime, sizeof(_shadow.startTime)); changes++; }
-        if (!_shadowInit || String(s.co2OnTime) != String(_shadow.co2OnTime)) { doc["co2OnTime"] = s.co2OnTime; strncpy(_shadow.co2OnTime, s.co2OnTime, sizeof(_shadow.co2OnTime)); changes++; }
-        if (!_shadowInit || String(s.co2OffTime) != String(_shadow.co2OffTime)) { doc["co2OffTime"] = s.co2OffTime; strncpy(_shadow.co2OffTime, s.co2OffTime, sizeof(_shadow.co2OffTime)); changes++; }
-        if (!_shadowInit || String(s.fanOnTime) != String(_shadow.fanOnTime)) { doc["fanOnTime"] = s.fanOnTime; strncpy(_shadow.fanOnTime, s.fanOnTime, sizeof(_shadow.fanOnTime)); changes++; }
-        if (!_shadowInit || String(s.fanOffTime) != String(_shadow.fanOffTime)) { doc["fanOffTime"] = s.fanOffTime; strncpy(_shadow.fanOffTime, s.fanOffTime, sizeof(_shadow.fanOffTime)); changes++; }
+        // 🔥 THE FIX: Replaced all 'strncpy' with the memory-safe 'strlcpy'
+        if (!_shadowInit || String(s.deviceName) != String(_shadow.deviceName)) { doc["deviceName"] = s.deviceName; strlcpy(_shadow.deviceName, s.deviceName, sizeof(_shadow.deviceName)); changes++; }
+        if (!_shadowInit || String(s.startTime) != String(_shadow.startTime)) { doc["startTime"] = s.startTime; strlcpy(_shadow.startTime, s.startTime, sizeof(_shadow.startTime)); changes++; }
+        if (!_shadowInit || String(s.co2OnTime) != String(_shadow.co2OnTime)) { doc["co2OnTime"] = s.co2OnTime; strlcpy(_shadow.co2OnTime, s.co2OnTime, sizeof(_shadow.co2OnTime)); changes++; }
+        if (!_shadowInit || String(s.co2OffTime) != String(_shadow.co2OffTime)) { doc["co2OffTime"] = s.co2OffTime; strlcpy(_shadow.co2OffTime, s.co2OffTime, sizeof(_shadow.co2OffTime)); changes++; }
+        if (!_shadowInit || String(s.fanOnTime) != String(_shadow.fanOnTime)) { doc["fanOnTime"] = s.fanOnTime; strlcpy(_shadow.fanOnTime, s.fanOnTime, sizeof(_shadow.fanOnTime)); changes++; }
+        if (!_shadowInit || String(s.fanOffTime) != String(_shadow.fanOffTime)) { doc["fanOffTime"] = s.fanOffTime; strlcpy(_shadow.fanOffTime, s.fanOffTime, sizeof(_shadow.fanOffTime)); changes++; }
 
         // 4. Arrays (Firebase Deep Pathing Magic)
         for(int i=0; i<24; i++) {
@@ -344,11 +345,22 @@ public:
             http.end();
         }
 
-        // PHASE 4: UNIVERSAL DELTA ENGINE
+        // 🔥 PHASE 4: UNIVERSAL DELTA ENGINE
         bool isDebouncedPush = (_settingsMgr.needsFirebaseSync() && (now - _lastCommandReceivedTime > 5000)); 
         bool isHourlyPush = (now - _lastAnalyticsPush > 3600000);
 
-        if (!_shadowInit || isDebouncedPush || isHourlyPush) {
+        TankSettings& s = _settingsMgr.get();
+
+        // 🔥 THE FIX: Detect if the ESP32 changed its own hardware natively via the Schedule!
+        bool isAutonomousChange = _shadowInit && (
+            s.isLightOn != _shadow.isLightOn ||
+            s.isCO2On != _shadow.isCO2On ||
+            s.isFanOn != _shadow.isFanOn ||
+            s.currentBrightness != _shadow.currentBrightness
+        );
+
+        // If a command came in, OR an hour passed, OR the autonomous schedule changed a light/dimmer value... PUSH IT!
+        if (!_shadowInit || isDebouncedPush || isHourlyPush || isAutonomousChange) {
             TankSettings backupShadow = _shadow; 
             String deltaJson = generateDeltaStateJson();
 

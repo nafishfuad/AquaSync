@@ -84,51 +84,34 @@ public:
         _forceHardwareEval = true; 
     }
 
-    bool updateFromJson(const JsonObject& doc) {
-        if (doc.containsKey("ts")) {
-            unsigned long incomingTs = doc["ts"];
-            if (incomingTs < _lastTimestamp) return false;
-            _lastTimestamp = incomingTs;
-        }
-
-        if (doc.containsKey("deviceName")) {
-            strncpy(_settings.deviceName, doc["deviceName"], sizeof(_settings.deviceName));
-            _settings.deviceName[sizeof(_settings.deviceName) - 1] = '\0';
-        }
-
-        if (doc.containsKey("isAutoMode")) _settings.isAutoMode = doc["isAutoMode"];
-        if (doc.containsKey("isCO2ScheduleSeparate")) _settings.isCO2ScheduleSeparate = doc["isCO2ScheduleSeparate"];
+    bool updateFromJson(JsonObject doc) {
+        bool changed = false;
         
-        if (doc.containsKey("currentBrightness")) {
-            _settings.currentBrightness = doc["currentBrightness"];
-            _settings.isLightOn = (_settings.currentBrightness > 0);
-        } else if (doc.containsKey("isLightOn")) {
-            _settings.isLightOn = doc["isLightOn"];
-            if (!_settings.isLightOn) _settings.currentBrightness = 0;
-            else if (_settings.currentBrightness == 0) _settings.currentBrightness = 40;
-        }
-
-        if ((doc.containsKey("isLightOn") || doc.containsKey("currentBrightness")) && !_settings.isCO2ScheduleSeparate) {
-            _settings.isCO2On = _settings.isLightOn; 
-        }
-
-        if (doc.containsKey("isCO2On")) _settings.isCO2On = doc["isCO2On"]; 
-        if (doc.containsKey("isFanOn")) _settings.isFanOn = doc["isFanOn"];
-        if (doc.containsKey("isFanEnabled")) _settings.isFanEnabled = doc["isFanEnabled"];
-        if (doc.containsKey("photoperiod")) _settings.photoperiod = doc["photoperiod"];
-        if (doc.containsKey("maxBrightness")) _settings.maxBrightness = doc["maxBrightness"];
-        if (doc.containsKey("fanSpeed")) _settings.fanSpeed = doc["fanSpeed"];
+        // 🔥 THE FIX: Replaced all 'strncpy' with the memory-safe 'strlcpy'
+        if (doc.containsKey("deviceName")) { strlcpy(_settings.deviceName, doc["deviceName"], sizeof(_settings.deviceName)); changed = true; }
         
-        if (doc.containsKey("isDimmerEnabled")) _settings.isDimmerEnabled = doc["isDimmerEnabled"];
-        if (doc.containsKey("sunriseMins")) _settings.sunriseMins = doc["sunriseMins"];
-        if (doc.containsKey("sunsetMins")) _settings.sunsetMins = doc["sunsetMins"];
-        if (doc.containsKey("recoveryMins")) _settings.recoveryMins = doc["recoveryMins"];
+        if (doc.containsKey("isAutoMode")) { _settings.isAutoMode = doc["isAutoMode"]; changed = true; }
+        if (doc.containsKey("isLightOn")) { _settings.isLightOn = doc["isLightOn"]; changed = true; }
+        if (doc.containsKey("isCO2On")) { _settings.isCO2On = doc["isCO2On"]; changed = true; }
+        if (doc.containsKey("isFanOn")) { _settings.isFanOn = doc["isFanOn"]; changed = true; }
+        if (doc.containsKey("isFanEnabled")) { _settings.isFanEnabled = doc["isFanEnabled"]; changed = true; }
+        if (doc.containsKey("currentBrightness")) { _settings.currentBrightness = doc["currentBrightness"]; changed = true; }
         
-        if (doc.containsKey("startTime")) strncpy(_settings.startTime, doc["startTime"], sizeof(_settings.startTime));
-        if (doc.containsKey("co2OnTime")) strncpy(_settings.co2OnTime, doc["co2OnTime"], sizeof(_settings.co2OnTime));
-        if (doc.containsKey("co2OffTime")) strncpy(_settings.co2OffTime, doc["co2OffTime"], sizeof(_settings.co2OffTime));
-        if (doc.containsKey("fanOnTime")) strncpy(_settings.fanOnTime, doc["fanOnTime"], sizeof(_settings.fanOnTime));
-        if (doc.containsKey("fanOffTime")) strncpy(_settings.fanOffTime, doc["fanOffTime"], sizeof(_settings.fanOffTime));
+        if (doc.containsKey("startTime")) { strlcpy(_settings.startTime, doc["startTime"], sizeof(_settings.startTime)); changed = true; }
+        if (doc.containsKey("photoperiod")) { _settings.photoperiod = doc["photoperiod"]; changed = true; }
+        if (doc.containsKey("maxBrightness")) { _settings.maxBrightness = doc["maxBrightness"]; changed = true; }
+        if (doc.containsKey("isDimmerEnabled")) { _settings.isDimmerEnabled = doc["isDimmerEnabled"]; changed = true; }
+        if (doc.containsKey("sunriseMins")) { _settings.sunriseMins = doc["sunriseMins"]; changed = true; }
+        if (doc.containsKey("sunsetMins")) { _settings.sunsetMins = doc["sunsetMins"]; changed = true; }
+        if (doc.containsKey("recoveryMins")) { _settings.recoveryMins = doc["recoveryMins"]; changed = true; }
+        
+        if (doc.containsKey("isCO2ScheduleSeparate")) { _settings.isCO2ScheduleSeparate = doc["isCO2ScheduleSeparate"]; changed = true; }
+        if (doc.containsKey("co2OnTime")) { strlcpy(_settings.co2OnTime, doc["co2OnTime"], sizeof(_settings.co2OnTime)); changed = true; }
+        if (doc.containsKey("co2OffTime")) { strlcpy(_settings.co2OffTime, doc["co2OffTime"], sizeof(_settings.co2OffTime)); changed = true; }
+        
+        if (doc.containsKey("fanOnTime")) { strlcpy(_settings.fanOnTime, doc["fanOnTime"], sizeof(_settings.fanOnTime)); changed = true; }
+        if (doc.containsKey("fanOffTime")) { strlcpy(_settings.fanOffTime, doc["fanOffTime"], sizeof(_settings.fanOffTime)); changed = true; }
+        if (doc.containsKey("fanSpeed")) { _settings.fanSpeed = doc["fanSpeed"]; changed = true; }
 
         if (doc.containsKey("colorSpectrum")) {
             JsonObject col = doc["colorSpectrum"];
@@ -136,10 +119,16 @@ public:
             if (col.containsKey("r")) _settings.colorR = col["r"];
             if (col.containsKey("g")) _settings.colorG = col["g"];
             if (col.containsKey("b")) _settings.colorB = col["b"];
+            changed = true;
         }
 
-        triggerLazySave(); 
-        return true;
+        if (changed) {
+            _lastChangeMillis = millis();
+            _needsFlashSave = true;
+            _needsFirebaseSync = true;
+            return true;
+        }
+        return false;
     }
 
     void processLazyFlashSave() {
