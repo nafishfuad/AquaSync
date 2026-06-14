@@ -1,171 +1,239 @@
-// src/components/system/TopNav.js
+// src/main.js
 
-import { DeviceStore } from '../../state.js';
-import { renderAboutModal } from './AboutModal.js';
-import { renderPairingWizard, renderEmptyState } from './PairingWizard.js';
+import { DeviceStore } from './state.js';
+import { API } from './api.js';
+import { buildInsightsPanel, buildControlPanel, buildSystemPanel, buildColorPanel } from './ui-factory.js';
+import { renderEmptyState, renderPairingWizard } from './components/system/PairingWizard.js';
+import { initTopNav } from './components/system/TopNav.js';
+import { debounce } from './utils.js'; 
+import { showOutageModal } from './components/system/OutageModal.js'; 
 
-export function initTopNav() {
-    const slot = document.getElementById("slot-top-nav");
-    if (!slot) return;
-
-    const savedTheme = localStorage.getItem("aquasync_theme") || "dark";
-    if (savedTheme === "light") {
-        document.body.classList.add("light-theme");
-    } else {
-        document.body.classList.remove("light-theme");
-    }
-
-    const activeDevice = DeviceStore.getActiveDevice();
-    const allDevices = DeviceStore.devices;
-
-    if (!activeDevice) {
-        slot.innerHTML = "";
-        return;
-    }
-
-    // 🔥 NEW: Truncates the HWID dynamically for the UI
-    const formatHwidDisplay = (id) => {
-        if (!id) return "";
-        let cleanId = id.toUpperCase();
-        if (cleanId.startsWith("AQUA-")) return cleanId.substring(0, 10);
-        if (cleanId.startsWith("AQUA")) return "AQUA-" + cleanId.substring(4, 9);
-        return cleanId.substring(0, 10); 
-    };
-
-    // 🔥 RESTORED: The full HTML for the Top Navigation Bar
-    slot.innerHTML = `
-        <div class="pointer-events-auto w-full max-w-[1200px] bg-cardbg border border-gray-700/50 shadow-md rounded-2xl px-4 py-3 flex justify-between items-center transition-colors duration-300">
-            <div class="flex items-center space-x-3">
-                <div class="w-8 h-8 bg-gradient-to-br from-aqua to-blue-600 rounded-lg flex items-center justify-center shadow-[0_0_10px_rgba(0,242,254,0.3)]">
-                    <span class="text-sm">🌊</span>
-                </div>
-                <div class="flex flex-col justify-center">
-                    <h1 class="text-white font-bold tracking-wider uppercase text-sm leading-tight">AquaSync</h1>
-                    <span class="text-[8px] text-aqua font-bold tracking-widest uppercase">Ecosystem</span>
-                </div>
-            </div>
-
-            <div class="flex items-center space-x-3 text-gray-400">
-                <button id="btn-theme-toggle" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 transition-colors active:scale-95 group">
-                    <svg id="icon-sun" class="w-4 h-4 ${savedTheme === 'dark' ? 'block' : 'hidden'} group-hover:text-amber-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                    <svg id="icon-moon" class="w-4 h-4 ${savedTheme === 'light' ? 'block' : 'hidden'} group-hover:text-aqua transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
-                </button>
-                
-                <button id="btn-nav-info" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 transition-colors border border-gray-700 active:scale-95">
-                    <span class="text-xs font-bold">i</span>
-                </button>
-                
-                <div class="flex items-center justify-center w-6 h-6 ml-1 relative">
-                    <div class="relative flex h-2.5 w-2.5 items-center justify-center">
-                        <span id="ui-top-ping" class="absolute inline-flex h-full w-full rounded-full opacity-75 hidden"></span>
-                        <span id="ui-top-dot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-gray-500 transition-colors duration-300"></span>
-                    </div>
-                    <div id="ui-status-spinner" class="hidden absolute w-4 h-4 border-2 border-aqua border-t-transparent rounded-full animate-spin"></div>
-                    
-                    <div id="ui-status-check" class="hidden absolute text-aqua flex items-center justify-center">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
-                        </svg>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="pointer-events-auto w-full max-w-[1200px] bg-cardbg/90 backdrop-blur-xl border border-gray-700/50 shadow-md rounded-2xl relative mt-3 transition-colors duration-300">
-            
-            <div id="device-dropdown-trigger" class="px-4 py-3 flex justify-between items-center cursor-pointer active:bg-gray-800/50 rounded-2xl transition-colors">
-                <div class="flex items-center space-x-3">
-                    <span class="text-2xl drop-shadow-md">🐠</span>
-                    <div class="flex flex-col">
-                        <span class="text-[9px] text-gray-500 uppercase tracking-widest font-bold">Active Device</span>
-                        <span id="ui-active-name" class="text-white font-bold text-sm tracking-wide">${activeDevice.name}</span>
-                    </div>
-                </div>
-                <div class="flex items-center space-x-3">
-                    <span id="ui-active-model" class="text-[9px] text-aqua bg-aqua/10 border border-aqua/20 px-2 py-1 rounded-full font-bold tracking-widest uppercase">${activeDevice.model}</span>
-                    <span id="dropdown-arrow" class="text-gray-500 transition-transform duration-300">▼</span>
-                </div>
-            </div>
-
-            <div id="device-dropdown-menu" class="hidden absolute top-[110%] left-0 w-full bg-cardbg border border-gray-700/50 shadow-2xl rounded-2xl p-3 z-[250] flex-col space-y-2 transition-colors duration-300">
-                ${Object.values(allDevices).map(dev => `
-                    <div class="bg-cardbg border border-gray-700/50 rounded-xl p-3 flex justify-between items-center ${dev.hwid === activeDevice.hwid ? 'border-aqua/50 bg-aqua/5' : ''} transition-colors duration-300">
-                        <div class="flex items-center space-x-3">
-                            <span class="text-xl">🐠</span>
-                            <div class="flex flex-col">
-                                <span class="text-sm font-bold text-white">${dev.name}</span>
-                                <span class="text-[8px] text-gray-500 uppercase tracking-widest">${formatHwidDisplay(dev.hwid)}</span>
-                            </div>
-                        </div>
-                        <div class="flex space-x-2">
-                            ${dev.hwid !== activeDevice.hwid ? `
-                                <button class="btn-switch-device bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500 hover:text-white px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all active:scale-95" data-hwid="${dev.hwid}">Select</button>
-                            ` : `<span class="px-3 py-1.5 text-[9px] font-bold text-aqua uppercase tracking-widest">Active</span>`}
-                            <button class="btn-remove-device bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500 hover:text-white px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all active:scale-95" data-hwid="${dev.hwid}">Remove</button>
-                        </div>
-                    </div>
-                `).join('')}
-                
-                <button id="btn-add-new-device" class="w-full bg-cardbg border border-gray-700/50 hover:border-gray-500 text-aqua font-bold py-3 rounded-xl text-[10px] uppercase tracking-widest transition-all active:scale-95 mt-2 flex items-center justify-center">
-                    <span class="text-lg mr-2">+</span> Add A New Device
-                </button>
-            </div>
-        </div>
-    `;
-
-    document.getElementById("btn-theme-toggle").onclick = () => {
-        const isLight = document.body.classList.toggle("light-theme");
-        localStorage.setItem("aquasync_theme", isLight ? "light" : "dark");
+const AquaSync = {
+    async init() {
+        console.log("🌊 AquaSync Ecosystem Initializing...");
+        DeviceStore.init();
         
-        document.getElementById("icon-sun").classList.toggle("hidden", isLight);
-        document.getElementById("icon-sun").classList.toggle("block", !isLight);
-        
-        document.getElementById("icon-moon").classList.toggle("hidden", !isLight);
-        document.getElementById("icon-moon").classList.toggle("block", isLight);
-
-        if (window.AquaSync && window.AquaSync.renderActiveUI) {
-            window.AquaSync.renderActiveUI();
+        if (Object.keys(DeviceStore.devices).length === 0) {
+            document.querySelector("main").classList.add("hidden");
+            // 🔥 THE FIX: Render Top Nav on empty state
+            document.querySelector("nav").classList.remove("hidden");
+            document.getElementById("slot-top-nav").classList.remove("hidden");
+            initTopNav(); 
+            renderEmptyState();
+            return; 
         }
-    };
 
-    document.getElementById("btn-nav-info").onclick = renderAboutModal;
+        initTopNav();
+        
+        const lastOpenTab = localStorage.getItem('aquasync_active_tab') || 'page-control';
+        this.switchTab(lastOpenTab); 
+        
+        this.renderActiveUI();
+        this.runSyncLoop();
 
-    const trigger = document.getElementById("device-dropdown-trigger");
-    const menu = document.getElementById("device-dropdown-menu");
-    const arrow = document.getElementById("dropdown-arrow");
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === 'visible') {
+                this.runSyncLoop();
+            }
+        });
+    },
 
-    trigger.onclick = () => {
-        menu.classList.toggle("hidden");
-        menu.classList.toggle("flex");
-        arrow.style.transform = menu.classList.contains("hidden") ? "rotate(0deg)" : "rotate(180deg)";
-    };
+    switchTab(targetId) {
+        localStorage.setItem('aquasync_active_tab', targetId);
 
-    document.getElementById("btn-add-new-device").onclick = () => {
-        menu.classList.add("hidden");
-        menu.classList.remove("flex");
-        renderPairingWizard(() => window.location.reload());
-    };
+        const pages = ['page-insights', 'page-control', 'page-color', 'page-network'];
+        pages.forEach(id => {
+            const pageEl = document.getElementById(id);
+            const navEl = document.getElementById(`nav-${id}`);
+            if (pageEl) pageEl.classList.add('hidden');
+            if (navEl) {
+                navEl.classList.remove('text-aqua');
+                navEl.classList.add('text-gray-500');
+            }
+        });
 
-    document.querySelectorAll(".btn-switch-device").forEach(btn => {
-        btn.onclick = (e) => {
-            const targetHwid = e.target.getAttribute("data-hwid");
-            DeviceStore.setActiveDevice(targetHwid);
-            window.location.reload(); 
-        };
-    });
+        const targetPage = document.getElementById(targetId);
+        const targetNav = document.getElementById(`nav-${targetId}`);
+        if (targetPage) targetPage.classList.remove('hidden');
+        if (targetNav) {
+            targetNav.classList.add('text-aqua');
+            targetNav.classList.remove('text-gray-500');
+        }
+        
+        if (event && event.type === 'click') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    },
 
-    document.querySelectorAll(".btn-remove-device").forEach(btn => {
-        btn.onclick = (e) => {
-            if (confirm("Are you sure you want to remove this device from the app?")) {
-                const targetHwid = e.target.getAttribute("data-hwid");
-                DeviceStore.removeDevice(targetHwid);
-                
-                if (Object.keys(DeviceStore.devices).length === 0) {
-                    renderEmptyState();
-                } else {
-                    window.location.reload();
+    setConnectionStatus(status) {
+        this.currentStatus = status;
+        
+        const topPing = document.getElementById("ui-top-ping");
+        const topDot = document.getElementById("ui-top-dot");
+        
+        if (topPing && topDot) {
+            topPing.className = "absolute inline-flex h-full w-full rounded-full opacity-75";
+            topDot.className = "relative inline-flex rounded-full h-2.5 w-2.5 transition-colors duration-300";
+            
+            if (status === "local") {
+                topPing.classList.add("bg-blue-400", "animate-ping");
+                topDot.classList.add("bg-blue-500");
+            } else if (status === "cloud") {
+                topPing.classList.add("bg-purple-400", "animate-ping");
+                topDot.classList.add("bg-purple-500");
+            } else { 
+                topPing.classList.add("hidden"); 
+                topDot.classList.add("bg-gray-500"); 
+            }
+        }
+        
+        const overviewPing = document.getElementById("ui-overview-ping");
+        const overviewDot = document.getElementById("ui-overview-dot");
+        
+        if (overviewPing && overviewDot) {
+            overviewPing.className = "absolute inline-flex h-full w-full rounded-full opacity-75";
+            overviewDot.className = "relative inline-flex rounded-full h-2.5 w-2.5 transition-colors duration-300";
+            
+            if (status === "offline") {
+                overviewPing.classList.add("hidden"); 
+                overviewDot.classList.add("bg-red-500"); 
+            } else { 
+                overviewPing.classList.add("bg-blue-400", "animate-ping");
+                overviewDot.classList.add("bg-blue-500");
+            }
+        }
+    },
+
+    updateSyncStatus(state) {
+        const dot = document.getElementById("ui-status-dot");
+        const spin = document.getElementById("ui-status-spinner");
+        const check = document.getElementById("ui-status-check");
+        if (!dot || !spin || !check) return; 
+
+        [dot, spin, check].forEach(el => el.classList.add('hidden'));
+
+        if (state === 'syncing') {
+            spin.classList.remove('hidden');
+        } else if (state === 'success') {
+            check.classList.remove('hidden');
+            setTimeout(() => {
+                if (!spin.classList.contains('hidden') === false) { 
+                    this.updateSyncStatus('idle');
                 }
+            }, 5000);
+        } else {
+            dot.classList.remove('hidden');
+        }
+    },
+
+    async runSyncLoop() {
+        const device = DeviceStore.getActiveDevice();
+        if (!device) return;
+
+        if (device.firmware.latest === "Checking..." || device.firmware.latest === "Unknown") {
+            try {
+                const fullManifestReq = await fetch("https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware.json?t=" + Date.now());
+                if (fullManifestReq.ok) {
+                    const fullManifest = await fullManifestReq.json();
+                    
+                    device.firmware.latest = fullManifest[device.model]?.version || "Unknown";
+                    device.firmware.downloadUrl = fullManifest[device.model]?.firmware_url || "";
+                    device.companion.latest = fullManifest["CompanionApp"]?.version || "Unknown";
+                    device.companion.downloadUrl = fullManifest["CompanionApp"]?.download_url || "";
+                    
+                    DeviceStore.save();
+                    this.renderActiveUI();
+                } else {
+                    throw new Error("Manifest not OK");
+                }
+            } catch (e) {
+                device.firmware.latest = "Unknown";
+                device.companion.latest = "Unknown";
+                DeviceStore.save();
+                this.renderActiveUI();
+            }
+        }
+
+        const response = await API.syncDevice(device);
+        
+        if (response && response.data) {
+            const nowSecs = Math.floor(Date.now() / 1000);
+            const lastBeat = response.data.lastHeartbeatTs || nowSecs;
+            const timeSinceLastBeat = nowSecs - lastBeat;
+
+            if (response.source === "cloud" && timeSinceLastBeat > 60) {
+                this.setConnectionStatus("offline");
+            } else {
+                this.setConnectionStatus(response.source);
+            }
+            
+            if (response.data.localIP && response.data.localIP !== device.localIP) {
+                DeviceStore.updateNetwork(device.hwid, response.data.localIP, true);
+            }
+            if (response.data.capabilities) {
+                DeviceStore.updateDeviceState(device.hwid, response.data, response.data.capabilities);
+            } else {
+                DeviceStore.updateDeviceState(device.hwid, response.data);
+            }
+
+            this.renderActiveUI();
+        } else {
+            this.setConnectionStatus("offline");
+        }
+    },
+
+    renderActiveUI() {
+        const device = DeviceStore.getActiveDevice();
+        if (!device) return;
+
+        const debouncedNetworkSend = debounce(async (targetDevice, payload) => {
+            const res = await API.sendCommand(targetDevice, payload);
+            if (res && res.success) {
+                AquaSync.updateSyncStatus('success'); 
+                if (res.returnedState) {
+                    DeviceStore.updateDeviceState(targetDevice.hwid, res.returnedState);
+                    AquaSync.renderActiveUI(); 
+                }
+            } else {
+                AquaSync.updateSyncStatus('idle');
+            }
+        }, 5000);
+
+        const commandHook = async (payload, fastUI = false) => {
+            if ((payload.hasOwnProperty("isLightOn") || payload.hasOwnProperty("currentBrightness")) && !device.metrics.isCO2ScheduleSeparate) {
+                payload.isCO2On = payload.hasOwnProperty("isLightOn") ? payload.isLightOn : (payload.currentBrightness > 0);
+            }
+
+            DeviceStore.updateDeviceState(device.hwid, payload);
+            AquaSync.renderActiveUI(); 
+            AquaSync.updateSyncStatus('syncing');
+
+            if (!fastUI) {
+                const res = await API.sendCommand(device, payload);
+                if (res && res.success) {
+                    AquaSync.updateSyncStatus('success'); 
+                    if (res.returnedState) {
+                        DeviceStore.updateDeviceState(device.hwid, res.returnedState);
+                        AquaSync.renderActiveUI(); 
+                    }
+                } else {
+                    AquaSync.updateSyncStatus('idle');
+                }
+            } else {
+                debouncedNetworkSend(device, payload);
             }
         };
-    });
-}
+
+        buildControlPanel(device, commandHook);
+        buildInsightsPanel(device);
+        buildColorPanel(device, commandHook);
+        buildSystemPanel(device, API, commandHook);
+
+        this.setConnectionStatus(this.currentStatus || 'offline');
+    }
+};
+
+window.AquaSync = AquaSync;
+window.showOutageModal = showOutageModal; 
+
+document.addEventListener("DOMContentLoaded", () => AquaSync.init());

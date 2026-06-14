@@ -4,7 +4,7 @@ export function renderCompanionApp(container, device) {
     const div = document.createElement('div');
     div.className = "bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800";
     
-    const currentAppVer = device.companion?.current || "v2.0.0";
+    const currentAppVer = device.companion?.current || "v1.0.0";
     const latestAppVer = device.companion?.latest || "Unknown";
     const dlUrl = device.companion?.downloadUrl || "";
 

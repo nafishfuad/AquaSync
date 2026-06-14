@@ -1,9 +1,9 @@
 {
   "AS-Standard": {
-    "version": "v4.0.0"
+    "version": "v1.0.0"
   },
   "CompanionApp": {
-    "version": "v2.0.0",
-    "download_url": "https://github.com/nafishfuad/AquaSync/releases/latest"
+    "version": "v1.0.0",
+    "download_url": ""
   }
 }

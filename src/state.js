@@ -34,7 +34,7 @@ export const DeviceStore = {
                     let dev = this.devices[hwid];
                     
                     if (!dev.companion) {
-                        dev.companion = { current: "v2.0.0", latest: "Checking...", downloadUrl: "" };
+                        dev.companion = { current: "v1.0.0", latest: "Checking...", downloadUrl: "" };
                     }
                     if (dev.analyticsData && dev.analyticsData.today) {
                         if (!dev.analyticsData.today.awakeData) {
@@ -57,8 +57,8 @@ export const DeviceStore = {
         this.devices[hwid] = {
             hwid: hwid, name: name, model: model, localIP: null,
             network: { isWiFiConnected: false, ssid: "Disconnected" },
-            firmware: { current: "v2.0.0", latest: "Checking...", downloadUrl: "" },
-            companion: { current: "v2.0.0", latest: "Checking...", downloadUrl: "" },
+            firmware: { current: "v1.0.0", latest: "Checking...", downloadUrl: "" },
+            companion: { current: "v1.0.0", latest: "Checking...", downloadUrl: "" },
             capabilities: { hasLight: true, hasCO2: true, hasFan: true, hasColorSpectrum: true },
             metrics: {
                 isAutoMode: true, isLightOn: false, isCO2On: false, isFanOn: false, isFanEnabled: false,

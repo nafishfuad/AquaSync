@@ -23,25 +23,31 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 3000) {
 
 export const API = {
     async syncDevice(device) {
+        // 🔥 THE DUMMY FIREWALL: Stop real network requests for the Demo Device
+        if (device.isDummy) {
+            return { 
+                success: true, 
+                source: "cloud", 
+                data: { ...device.metrics, localIP: "127.0.0.1", lastHeartbeatTs: Math.floor(Date.now() / 1000) } 
+            };
+        }
+
         const now = Date.now();
         let useCloud = false;
         let localData = null;
         let finalSource = "cloud";
 
-        // 1. Evaluate Circuit Breaker
         if (now < forceCloudUntil || !device.localIP) {
             useCloud = true;
         }
 
-        // 2. Attempt Local Network Sync (Fast UI State)
         if (!useCloud) {
             try {
-                // Keep timeout very short (2s) so we don't lag the UI if the local network is congested
                 const response = await fetchWithTimeout(`http://${device.localIP}/info`, {}, 2000);
                 if (!response.ok) throw new Error("Local HTTP Error");
                 
                 localData = await response.json();
-                localFailCount = 0; // Reset breaker on success
+                localFailCount = 0; 
                 finalSource = "local";
             } catch (err) {
                 localFailCount++;
@@ -52,31 +58,23 @@ export const API = {
             }
         }
 
-        // 3. ALWAYS Pull from Cloud (For Heavy Analytics Arrays)
         try {
             const response = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/state.json?t=${Date.now()}`);
             if (!response.ok) throw new Error("Cloud HTTP Error");
             
             const cloudData = await response.json();
             
-            // 🔥 THE PHANTOM SHIELD
             if (cloudData === null) {
                 console.warn("[API] Firebase returned a phantom null state. Ignoring to protect UI.");
-                // If cloud is phantom, but we have local data, return local to keep UI alive
                 if (localData) return { source: finalSource, data: localData }; 
                 throw new Error("Phantom State Detected");
             }
             
-            // 🔥 THE HYBRID MERGE
-            // We layer the instant Local Data ON TOP OF the heavy Cloud Data.
-            // This ensures buttons are 100% live, but graphs are populated!
             const mergedData = localData ? { ...cloudData, ...localData } : cloudData;
-            
             return { source: finalSource, data: mergedData };
             
         } catch (err) {
             console.error("[API] Cloud sync failed or returned invalid data.");
-            // Offline fallback: If Firebase fails (no internet) but we are on Local WiFi, keep the UI alive!
             if (localData) return { source: finalSource, data: localData };
             return null; 
         }
@@ -95,6 +93,11 @@ export const API = {
     },
 
     async sendCommand(device, payload) {
+        // 🔥 THE DUMMY FIREWALL: Instant success for optimistic UI rendering
+        if (device.isDummy) {
+            return { success: true, source: "cloud", returnedState: null };
+        }
+
         const commandWrapper = {
             v: 2,
             ts: Math.floor(Date.now() / 1000),
@@ -103,7 +106,6 @@ export const API = {
 
         const now = Date.now();
         
-        // Attempt Local First
         if (device.localIP && now >= forceCloudUntil) {
             try {
                 const res = await fetchWithTimeout(`http://${device.localIP}/api/control`, {
@@ -121,7 +123,6 @@ export const API = {
             }
         }
 
-        // Fallback to Cloud Patch
         try {
             const res = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/commands.json`, {
                 method: 'PATCH',
@@ -153,10 +154,8 @@ export const API = {
         }
     },
 
-    // 🔥 NEW: OTA Manifest Fetcher
     async checkLatestFirmware(model) {
         try {
-            // Append timestamp to bust the browser cache
             const response = await fetch("https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware.json?t=" + Date.now());
             if (!response.ok) return null;
             
