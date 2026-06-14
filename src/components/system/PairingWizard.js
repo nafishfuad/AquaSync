@@ -4,7 +4,6 @@ import { API } from '../../api.js';
 
 let heartbeatInterval = null;
 
-// 🔥 NEW: Function to setup the realistic Dummy Device
 export function setupDemoDevice() {
     const demoId = "DEMO-" + Math.floor(Math.random() * 10000);
     DeviceStore.addDevice(demoId, "AS-Standard", "Virtual Demo Tank");
@@ -60,7 +59,6 @@ export function renderPairingWizard(onComplete) {
     slot.innerHTML = "";
     const clone = template.content.cloneNode(true);
     
-    // 1. IMMEDIATELY APPEND TO LIVE DOM
     slot.classList.remove("hidden");
     slot.classList.add("flex");
     slot.appendChild(clone);
@@ -68,7 +66,6 @@ export function renderPairingWizard(onComplete) {
     let secureToken = null;
     let discoveredHwid = null;
 
-    // 2. Start Polling for the ESP32 Hotspot
     const startHeartbeat = () => {
         heartbeatInterval = setInterval(async () => {
             const handshake = await API.checkHotspotHandshake();
@@ -77,7 +74,6 @@ export function renderPairingWizard(onComplete) {
                 secureToken = handshake.session_token;
                 discoveredHwid = handshake.hw_id;
                 
-                // Transition UI (Targeting live DOM elements)
                 document.getElementById("txt-found-hwid").innerText = `HW_ID: ${discoveredHwid}`;
                 document.getElementById("view-listen").classList.add("hidden");
                 document.getElementById("view-found").classList.remove("hidden");
@@ -87,7 +83,6 @@ export function renderPairingWizard(onComplete) {
 
     startHeartbeat();
 
-    // 3. Handle Closing the Modal
     const closeModal = (e) => {
         if (e) e.stopPropagation(); 
         clearInterval(heartbeatInterval);
@@ -104,7 +99,6 @@ export function renderPairingWizard(onComplete) {
 
     document.getElementById("btn-close-wizard").addEventListener("click", closeModal);
 
-    // 4. Handle Submitting Credentials
     const btnSend = document.getElementById("btn-send-creds");
     btnSend.addEventListener("click", async () => {
         const ssid = document.getElementById("inp-ssid").value.trim();
@@ -147,15 +141,11 @@ export function renderEmptyState() {
     slot.innerHTML = "";
     const clone = template.content.cloneNode(true);
     
-    // 1. Append to live DOM immediately!
-    slot.classList.remove("hidden");
-    slot.classList.add("flex");
-    slot.appendChild(clone);
-
-    // 2. Attach the click listener to the live element
-    const startBtn = document.getElementById("btn-start-discovery");
-    if (startBtn) {
-        startBtn.addEventListener("click", () => {
+    // 🔥 THE FIX: Search the template BEFORE we put it on screen, fallback to ANY button to guarantee it works
+    let targetBtn = clone.querySelector("#btn-start-discovery") || clone.querySelector("button");
+    
+    if (targetBtn) {
+        targetBtn.addEventListener("click", () => {
             renderPairingWizard(() => {
                 slot.classList.add("hidden");
                 slot.classList.remove("flex");
@@ -163,12 +153,17 @@ export function renderEmptyState() {
             });
         });
 
-        // 🔥 THE FIX: Inject the Demo Button right below the Pair button dynamically!
+        // Inject the Demo Button right below the Pair button dynamically!
         const demoBtn = document.createElement("button");
         demoBtn.className = "w-full bg-[#121212] border border-gray-700 hover:bg-gray-800 text-gray-300 font-bold py-3.5 rounded-xl text-[11px] uppercase tracking-widest transition-all active:scale-95 shadow-sm mt-3 flex items-center justify-center";
         demoBtn.innerHTML = `<span class="mr-2 text-purple-400 text-base">🎮</span> Simulate Demo Tank`;
         demoBtn.onclick = () => setupDemoDevice();
         
-        startBtn.parentNode.insertBefore(demoBtn, startBtn.nextSibling);
+        targetBtn.parentNode.insertBefore(demoBtn, targetBtn.nextSibling);
     }
+
+    // Append to live DOM
+    slot.classList.remove("hidden");
+    slot.classList.add("flex");
+    slot.appendChild(clone);
 }

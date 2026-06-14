@@ -13,11 +13,12 @@ const AquaSync = {
         console.log("🌊 AquaSync Ecosystem Initializing...");
         DeviceStore.init();
         
+        // 🔥 THE FIX: Use Optional Chaining (?.) to prevent fatal crashes if HTML tags load asynchronously
         if (Object.keys(DeviceStore.devices).length === 0) {
-            document.querySelector("main").classList.add("hidden");
-            // 🔥 THE FIX 1: Add "hidden" so the Bottom Tab Bar doesn't float over the Welcome screen!
-            document.querySelector("nav").classList.add("hidden"); 
-            document.getElementById("slot-top-nav").classList.remove("hidden");
+            document.querySelector("main")?.classList.add("hidden");
+            document.querySelector("nav")?.classList.add("hidden"); 
+            document.getElementById("slot-top-nav")?.classList.remove("hidden");
+            
             initTopNav(); 
             renderEmptyState();
             return; 
@@ -60,10 +61,7 @@ const AquaSync = {
             targetNav.classList.remove('text-gray-500');
         }
         
-        // 🔥 THE FIX 2: Safe strict-mode check for window.event to prevent ReferenceError crashes
-        if (typeof window !== 'undefined' && window.event && window.event.type === 'click') {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     },
 
     setConnectionStatus(status) {
