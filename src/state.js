@@ -6,7 +6,7 @@ function formatTime(minutes) {
     return `${h}h ${m}m`;
 }
 
-// 🔥 THE FIX: Helper function to safely convert Firebase sparse objects back to true arrays
+// Safely convert Firebase sparse objects back to true arrays
 function toArray(data, length, defaultVal) {
     if (Array.isArray(data)) return data;
     if (typeof data === "object" && data !== null) {
@@ -32,152 +32,86 @@ export const DeviceStore = {
                 this.devices = JSON.parse(storedData);
                 for (let hwid in this.devices) {
                     let dev = this.devices[hwid];
-                    
-                    if (!dev.companion) {
-                        dev.companion = { current: "v1.0.0", latest: "Checking...", downloadUrl: "" };
-                    }
-                    if (dev.analyticsData && dev.analyticsData.today) {
-                        if (!dev.analyticsData.today.awakeData) {
-                            dev.analyticsData.today.awakeData = Array(24).fill(1);
-                        }
-                    }
+                    if (!dev.companion) dev.companion = { current: "v1.0.0", latest: "Checking...", downloadUrl: "" };
+                    if (!dev.firmware) dev.firmware = { current: "v1.0.0", latest: "Checking...", downloadUrl: "" };
                 }
             }
-            this.activeDeviceId = localStorage.getItem("aquasync_active_hwid");
         } catch (error) {
-            console.error("[STATE] Memory validation failed. Corrupted JSON.", error);
-            localStorage.removeItem("aquasync_ecosystem");
-            localStorage.removeItem("aquasync_active_hwid");
+            console.error("Failed to parse device store", error);
             this.devices = {};
-            this.activeDeviceId = null;
+        }
+
+        const activeId = localStorage.getItem("aquasync_active_hwid");
+        if (activeId && this.devices[activeId]) {
+            this.activeDeviceId = activeId;
+        } else if (Object.keys(this.devices).length > 0) {
+            this.activeDeviceId = Object.keys(this.devices)[0];
         }
     },
 
-    addDevice(hwid, model = "AS-Standard", name = "New Aquarium Tank") {
-        this.devices[hwid] = {
-            hwid: hwid, name: name, model: model, localIP: null,
-            network: { isWiFiConnected: false, ssid: "Disconnected" },
-            firmware: { current: "v1.0.0", latest: "Checking...", downloadUrl: "" },
-            companion: { current: "v1.0.0", latest: "Checking...", downloadUrl: "" },
-            capabilities: { hasLight: true, hasCO2: true, hasFan: true, hasColorSpectrum: true },
-            metrics: {
-                isAutoMode: true, isLightOn: false, isCO2On: false, isFanOn: false, isFanEnabled: false,
-                currentBrightness: 0, startTime: "17:00", photoperiod: 6, maxBrightness: 80,
-                isDimmerEnabled: true, sunriseMins: 20, sunsetMins: 20, isCO2ScheduleSeparate: false,
-                co2OnTime: "16:50", co2OffTime: "22:40", recoveryMins: 5, fanOnTime: "10:00", fanOffTime: "18:00",
-                fanSpeed: 80, colorSpectrum: { w: 87, r: 100, g: 100, b: 100 }
-            },
-            analyticsData: {
-                today: { totalActive: "00h 00m", loadShedding: "00h 00m", totalBlackout: "00h 00m", hourlyGraph: Array(24).fill(0), awakeData: Array(24).fill(1) },
-                week: { totalActive: "00h 00m", avgLight: "00h 00m", loadShedding: "00h 00m", dailyGraph: Array(7).fill(0) },
-                month: { totalActive: "00h 00m", avgLight: "00h 00m", loadShedding: "00h 00m", dailyGraph: Array(30).fill(0) }
-            }
-        };
+    addDevice(hwid, model, name) {
+        if (!this.devices[hwid]) {
+            this.devices[hwid] = {
+                hwid: hwid,
+                model: model,
+                name: name,
+                localIP: null,
+                network: { isWiFiConnected: false, ssid: "" },
+                metrics: {
+                    isAutoMode: true,
+                    isLightOn: false,
+                    isCO2On: false,
+                    isFanOn: false,
+                    isFanEnabled: false,
+                    currentBrightness: 0,
+                    startTime: "12:00",
+                    photoperiod: 8,
+                    maxBrightness: 100,
+                    isDimmerEnabled: false,
+                    sunriseMins: 30,
+                    sunsetMins: 30,
+                    isCO2ScheduleSeparate: false,
+                    co2OnTime: "11:00",
+                    co2OffTime: "20:00",
+                    recoveryMins: 15,
+                    fanOnTime: "12:00",
+                    fanOffTime: "20:00",
+                    fanSpeed: 50,
+                    colorW: 100, colorR: 100, colorG: 100, colorB: 100
+                },
+                capabilities: { hasLight: true, hasCO2: true, hasFan: true, hasColorSpectrum: true },
+                analyticsData: {
+                    today: { totalActive: "00h 00m", loadShedding: "00h 00m", hourlyGraph: Array(24).fill(0), awakeData: Array(24).fill(0) },
+                    week: { totalActive: "00h 00m", avgLight: "00h 00m", loadShedding: "00h 00m", dailyGraph: Array(7).fill(0) },
+                    month: { totalActive: "00h 00m", avgLight: "00h 00m", loadShedding: "00h 00m", dailyGraph: Array(30).fill(0) }
+                },
+                companion: { current: "v1.0.0", latest: "Checking...", downloadUrl: "" },
+                firmware: { current: "v1.0.0", latest: "Checking...", downloadUrl: "" }
+            };
+        } else {
+            this.devices[hwid].name = name;
+        }
+        
         this.activeDeviceId = hwid;
         this.save();
-    },
-
-    getActiveDevice() {
-        if (!this.activeDeviceId || !this.devices[this.activeDeviceId]) {
-            const keys = Object.keys(this.devices);
-            if (keys.length > 0) this.activeDeviceId = keys[0];
-            else return null;
-        }
-        return this.devices[this.activeDeviceId];
-    },
-
-    setActiveDevice(hwid) {
-        if (this.devices[hwid]) {
-            this.activeDeviceId = hwid;
-            this.save();
-            return true;
-        }
-        return false;
     },
 
     removeDevice(hwid) {
         if (this.devices[hwid]) {
             delete this.devices[hwid];
             if (this.activeDeviceId === hwid) {
-                const remainingKeys = Object.keys(this.devices);
-                this.activeDeviceId = remainingKeys.length > 0 ? remainingKeys[0] : null;
+                const keys = Object.keys(this.devices);
+                this.activeDeviceId = keys.length > 0 ? keys[0] : null;
             }
             this.save();
-            return true;
         }
-        return false;
     },
 
-    updateDeviceState(hwid, newMetrics, newCapabilities = null) {
-        if (!this.devices[hwid] || !newMetrics) return;
-
-        if (newMetrics.fw_version) {
-            this.devices[hwid].firmware.current = newMetrics.fw_version;
+    setActiveDevice(hwid) {
+        if (this.devices[hwid]) {
+            this.activeDeviceId = hwid;
+            this.save();
         }
-        
-        this.devices[hwid].metrics = { ...this.devices[hwid].metrics, ...newMetrics };
-        if (newMetrics.deviceName) this.devices[hwid].name = newMetrics.deviceName;
-
-        const mergedMetrics = this.devices[hwid].metrics;
-
-        if (mergedMetrics.hourlyData || mergedMetrics.dailyData) {
-            
-            // 🔥 THE FIX: Force Firebase Objects safely back into true Arrays
-            const hourly = toArray(mergedMetrics.hourlyData, 24, 0);
-            const awake = toArray(mergedMetrics.awakeData, 24, 1);
-            const daily = toArray(mergedMetrics.dailyData, 30, 0);
-
-            let todayTotal = mergedMetrics.liveActiveMins !== undefined 
-                ? mergedMetrics.liveActiveMins 
-                : hourly.reduce((a, b) => a + b, 0);
-            
-            if (mergedMetrics.isLightOn && todayTotal === 0) {
-                todayTotal = new Date().getMinutes(); 
-            }
-            
-            const activeHistoryWeek = daily.slice(0, 6).filter(mins => mins > 0).length;
-            const activeHistoryMonth = daily.slice(0, 29).filter(mins => mins > 0).length;
-
-            const weekDivisor = Math.max(1, activeHistoryWeek + (todayTotal > 0 ? 1 : 0));
-            const monthDivisor = Math.max(1, activeHistoryMonth + (todayTotal > 0 ? 1 : 0));
-
-            const weekTotal = daily.slice(0, 6).reduce((a, b) => a + b, 0) + todayTotal;
-            const monthTotal = daily.slice(0, 29).reduce((a, b) => a + b, 0) + todayTotal;
-
-            const lightOutageMins = mergedMetrics.lightLoadSheddingToday || 0;
-            const totalOutageMins = mergedMetrics.totalLoadSheddingToday || 0;
-
-            const weekGraphData = [...daily.slice(0, 6).reverse(), todayTotal].map(m => Number((m / 60).toFixed(2)));
-            const monthGraphData = [...daily.slice(0, 29).reverse(), todayTotal].map(m => Number((m / 60).toFixed(2)));
-
-            this.devices[hwid].analyticsData = {
-                today: { 
-                    totalActive: formatTime(todayTotal), 
-                    loadShedding: formatTime(lightOutageMins), 
-                    totalBlackout: formatTime(totalOutageMins), 
-                    hourlyGraph: hourly,
-                    awakeData: awake 
-                },
-                week: { 
-                    totalActive: formatTime(weekTotal), 
-                    avgLight: formatTime(Math.round(weekTotal / weekDivisor)), 
-                    loadShedding: formatTime(lightOutageMins), 
-                    dailyGraph: weekGraphData 
-                },
-                month: { 
-                    totalActive: formatTime(monthTotal), 
-                    avgLight: formatTime(Math.round(monthTotal / monthDivisor)), 
-                    loadShedding: formatTime(lightOutageMins), 
-                    dailyGraph: monthGraphData
-                }
-            };
-        }
-        
-        if (newCapabilities) {
-            this.devices[hwid].capabilities = { ...this.devices[hwid].capabilities, ...newCapabilities };
-        }
-        
-        this.save();
     },
 
     updateNetwork(hwid, ip, isConnected) {
@@ -187,12 +121,98 @@ export const DeviceStore = {
         this.save();
     },
 
+    updateDeviceState(hwid, newMetrics, newCapabilities) {
+        if (!this.devices[hwid]) return;
+
+        if (newMetrics) {
+            this.devices[hwid].metrics = { ...this.devices[hwid].metrics, ...newMetrics };
+
+            // Parse deep Analytics if supplied
+            if (newMetrics.hourlyData || newMetrics.dailyData) {
+                const h = toArray(newMetrics.hourlyData, 24, 0);
+                const d = toArray(newMetrics.dailyData, 30, 0);
+                const awake = toArray(newMetrics.awakeData, 24, 1);
+
+                let todayTotal = 0;
+                for (let i = 0; i < 24; i++) {
+                    if (h[i] > 60) h[i] = 60;
+                    todayTotal += h[i];
+                }
+
+                let weekTotal = 0;
+                const weekGraphData = [];
+                let weekDivisor = 0;
+                for (let i = 0; i < 7; i++) {
+                    const val = d[i] || 0;
+                    weekTotal += val;
+                    if (val > 0) weekDivisor++;
+                    weekGraphData.unshift(+(val / 60).toFixed(1));
+                }
+                if (weekDivisor === 0) weekDivisor = 1;
+
+                let monthTotal = 0;
+                const monthGraphData = [];
+                let monthDivisor = 0;
+                for (let i = 0; i < 30; i++) {
+                    const val = d[i] || 0;
+                    monthTotal += val;
+                    if (val > 0) monthDivisor++;
+                    monthGraphData.unshift(+(val / 60).toFixed(1));
+                }
+                if (monthDivisor === 0) monthDivisor = 1;
+
+                const lightOutageMins = newMetrics.lightLoadSheddingToday || 0;
+                const totalOutageMins = newMetrics.totalLoadSheddingToday || 0;
+
+                this.devices[hwid].analyticsData = {
+                    today: { 
+                        totalActive: formatTime(todayTotal), 
+                        loadShedding: formatTime(lightOutageMins), 
+                        hourlyGraph: h,
+                        awakeData: awake 
+                    },
+                    week: { 
+                        totalActive: formatTime(weekTotal), 
+                        avgLight: formatTime(Math.round(weekTotal / weekDivisor)), 
+                        loadShedding: formatTime(lightOutageMins), 
+                        dailyGraph: weekGraphData 
+                    },
+                    month: { 
+                        totalActive: formatTime(monthTotal), 
+                        avgLight: formatTime(Math.round(monthTotal / monthDivisor)), 
+                        loadShedding: formatTime(lightOutageMins), 
+                        totalBlackout: formatTime(totalOutageMins),
+                        dailyGraph: monthGraphData
+                    }
+                };
+            }
+        }
+        
+        if (newCapabilities) {
+            this.devices[hwid].capabilities = { ...this.devices[hwid].capabilities, ...newCapabilities };
+        }
+        
+        this.save();
+    },
+
+    getActiveDevice() {
+        if (this.activeDeviceId && this.devices[this.activeDeviceId]) {
+            return this.devices[this.activeDeviceId];
+        }
+        return null;
+    },
+
     save() {
         try {
             localStorage.setItem("aquasync_ecosystem", JSON.stringify(this.devices));
-            if (this.activeDeviceId) localStorage.setItem("aquasync_active_hwid", this.activeDeviceId);
+            if (this.activeDeviceId) {
+                localStorage.setItem("aquasync_active_hwid", this.activeDeviceId);
+            } else {
+                localStorage.removeItem("aquasync_active_hwid");
+            }
+            console.log("💾 DeviceStore safely secured in browser storage.");
         } catch (error) {
-            console.error("[STATE] Error writing to browser storage.", error);
+            console.error("Failed to save device store to localStorage", error);
         }
     }
 };

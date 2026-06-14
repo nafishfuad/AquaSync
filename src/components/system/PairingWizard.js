@@ -44,6 +44,9 @@ export function setupDemoDevice() {
     };
     
     DeviceStore.setActiveDevice(demoId);
+    
+    // 🔥 THE FIX: Explicitly force the browser to save to LocalStorage before reloading!
+    DeviceStore.save(); 
     window.location.reload();
 }
 
@@ -52,7 +55,6 @@ export function renderPairingWizard(onComplete) {
     const template = document.getElementById("tpl-pairing-wizard");
     if (!template || !slot) return;
 
-    slot.style.zIndex = "500";
     slot.innerHTML = "";
     const clone = template.content.cloneNode(true);
     
@@ -85,7 +87,6 @@ export function renderPairingWizard(onComplete) {
         clearInterval(heartbeatInterval);
         
         slot.innerHTML = "";
-        slot.style.zIndex = "";
 
         if (Object.keys(DeviceStore.devices).length === 0) {
             renderEmptyState();
@@ -117,6 +118,9 @@ export function renderPairingWizard(onComplete) {
             btnSend.innerHTML = `✅ Paired!`;
             DeviceStore.addDevice(discoveredHwid, "AS-Standard", deviceName);
             DeviceStore.updateNetwork(discoveredHwid, null, true); 
+            
+            // 🔥 THE FIX: Explicitly force the browser to save to LocalStorage before closing!
+            DeviceStore.save(); 
             
             setTimeout(() => {
                 closeModal();
@@ -152,10 +156,9 @@ export function renderEmptyState() {
             });
         });
 
-        // 🔥 THE FIX: Perfectly mirrored classes and innerHTML spans to guarantee identical line height
         const demoBtn = document.createElement("button");
-        demoBtn.className = "w-full bg-[#121212] border border-gray-700 hover:bg-gray-800 text-gray-300 font-bold py-3.5 rounded-xl text-[11px] uppercase tracking-widest transition-all active:scale-95 shadow-sm mt-3 flex items-center justify-center";
-        demoBtn.innerHTML = `<span class="text-lg mr-2 text-purple-400">🎮</span> Simulate Demo Tank`;
+        demoBtn.className = "w-full bg-[#121212] border border-gray-700 hover:bg-gray-800 hover:text-white text-gray-300 font-bold py-3.5 rounded-xl text-[11px] uppercase tracking-widest transition-all active:scale-95 shadow-sm mt-3 block text-center";
+        demoBtn.innerHTML = "🎮 SIMULATE DEMO TANK";
         demoBtn.onclick = () => setupDemoDevice();
         
         startBtn.parentNode.insertBefore(demoBtn, startBtn.nextSibling);
