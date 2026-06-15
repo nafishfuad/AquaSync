@@ -1,7 +1,9 @@
 // src/state.js
 
 // 1. Import ONLY the specific Firebase methods we need to use
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "firebase/auth";
+// Add sendEmailVerification to this list!
+// Add sendPasswordResetEmail to this list
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendEmailVerification, sendPasswordResetEmail } from "firebase/auth";
 import { ref, onValue, set, get } from "firebase/database";
 
 // 2. 🔥 THE CONNECTION: Import the live Auth and DB instances from your central config file
@@ -29,7 +31,7 @@ function toArray(data, length, defaultVal) {
 }
 
 // ==========================================
-// NEW: IDENTITY STORE (Authentication & Sync)
+// UPDATED: IDENTITY STORE (With Email Verification)
 // ==========================================
 export const IdentityStore = {
     currentUser: null,
@@ -38,25 +40,28 @@ export const IdentityStore = {
     init() {
         onAuthStateChanged(auth, async (user) => {
             if (user) {
+                // 🔥 THE GATEKEEPER: Block unverified users from entering the cloud
+                if (!user.emailVerified) {
+                    console.log("🔒 Login blocked: Email not verified.");
+                    signOut(auth); // Kick them back to guest mode
+                    return; 
+                }
+
                 console.log("🔓 User logged in:", user.email);
                 this.currentUser = user;
                 this.isGuest = false;
                 
-                // 1. Push any local guest tanks to the new cloud account
+                // Push any local guest tanks to the new cloud account
                 await DeviceStore.syncLocalToCloud();
-
-                // 2. Download their full cloud ecosystem
                 DeviceStore.loadFromCloud(user.uid);
 
-                // 3. Tell the UI to update the Network Page
                 window.dispatchEvent(new CustomEvent("aquasync_auth_changed", { detail: { isGuest: false, email: user.email } }));
             } else {
                 console.log("👤 Running in Local Guest Mode");
                 this.currentUser = null;
                 this.isGuest = true;
-                DeviceStore.initLocal(); // Fall back to localStorage
+                DeviceStore.initLocal(); 
 
-                // Tell UI to show Guest Mode
                 window.dispatchEvent(new CustomEvent("aquasync_auth_changed", { detail: { isGuest: true, email: null } }));
             }
         });
@@ -64,7 +69,14 @@ export const IdentityStore = {
 
     async login(email, password) {
         try {
-            await signInWithEmailAndPassword(auth, email, password);
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            
+            // 🔥 Check if they clicked the email link!
+            if (!userCredential.user.emailVerified) {
+                signOut(auth);
+                return { success: false, message: "⚠️ Please check your inbox and verify your email before logging in." };
+            }
+            
             return { success: true };
         } catch (error) {
             return { success: false, message: error.message };
@@ -74,11 +86,32 @@ export const IdentityStore = {
     async signup(email, password) {
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            // Create their empty Vault A ecosystem
-            await set(ref(db, `users/${userCredential.user.uid}/ecosystem`), {});
-            return { success: true };
+            
+            // 🔥 We removed the `set` command here. 
+            // Firebase doesn't need empty folders! It will create it when they add their first tank.
+            
+            // Send the verification email
+            await sendEmailVerification(userCredential.user);
+            
+            // Immediately log them out so they can't claim tanks yet
+            signOut(auth);
+            
+            // Return a special flag so the UI knows to show a success popup
+            return { success: true, requireVerification: true };
         } catch (error) {
             return { success: false, message: error.message };
+        }
+    },
+    async resetPassword(email) {
+        try {
+            await sendPasswordResetEmail(auth, email);
+            return { success: true, message: "✅ Password reset email sent! Please check your inbox." };
+        } catch (error) {
+            // Make Firebase error messages more user-friendly
+            let msg = error.message;
+            if (msg.includes("user-not-found") || msg.includes("invalid-credential")) msg = "No account found with this email.";
+            if (msg.includes("missing-email")) msg = "Please enter an email address.";
+            return { success: false, message: msg };
         }
     },
 

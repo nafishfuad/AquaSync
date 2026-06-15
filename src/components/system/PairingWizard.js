@@ -1,5 +1,5 @@
 // src/components/system/PairingWizard.js
-import { DeviceStore } from '../../state.js';
+import { DeviceStore, IdentityStore } from '../../state.js';
 import { API } from '../../api.js';
 
 let heartbeatInterval = null;
@@ -179,11 +179,19 @@ export function renderEmptyState() {
         
         startBtn.parentNode.insertBefore(demoBtn, startBtn.nextSibling);
 
-        // 🔥 NEW: Inject the Login option for returning Cloud users
-        const loginWrapper = document.createElement("p");
-        loginWrapper.className = "text-sm text-gray-500 mt-6 text-center";
-        loginWrapper.innerHTML = `Already have an account? <button class="text-aqua font-bold hover:underline transition-all outline-none" onclick="window.openAuthModal()">Log In to Sync</button>`;
-        
-        startBtn.parentNode.insertBefore(loginWrapper, demoBtn.nextSibling);
+        // 🔥 NEW: Check if user is already logged in!
+        if (IdentityStore.isGuest) {
+            const loginWrapper = document.createElement("p");
+            loginWrapper.className = "text-sm text-gray-500 mt-6 text-center";
+            loginWrapper.innerHTML = `Already have an account? <button class="text-aqua font-bold hover:underline transition-all outline-none" onclick="window.openAuthModal()">Log In to Sync</button>`;
+            startBtn.parentNode.insertBefore(loginWrapper, demoBtn.nextSibling);
+        } else {
+            const loggedInText = document.createElement("p");
+            loggedInText.className = "text-xs text-aqua/70 mt-6 text-center font-bold tracking-wider uppercase";
+            // Safely grab the email to display it
+            const userEmail = IdentityStore.currentUser ? IdentityStore.currentUser.email : "Cloud Account";
+            loggedInText.innerHTML = `☁️ Synced as: ${userEmail}`;
+            startBtn.parentNode.insertBefore(loggedInText, demoBtn.nextSibling);
+        }
     }
 }

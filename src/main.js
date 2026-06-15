@@ -290,6 +290,23 @@ window.openAuthModal = () => {
     const el = document.getElementById('modal-auth');
     if(el) el.classList.remove('hidden');
 };
+window.toggleAuthView = (view) => {
+    const mainView = document.getElementById('view-auth-main');
+    const resetView = document.getElementById('view-auth-reset');
+    const msgBox = document.getElementById('reset-msg');
+    
+    if (msgBox) msgBox.classList.add('hidden'); // Clear old messages
+
+    if (view === 'reset') {
+        mainView.classList.add('hidden');
+        resetView.classList.remove('hidden');
+        // Auto-fill the email if they already typed it in the login screen
+        document.getElementById('reset-email').value = document.getElementById('auth-email').value;
+    } else {
+        resetView.classList.add('hidden');
+        mainView.classList.remove('hidden');
+    }
+};
 window.openAddDeviceModal = () => {
     const el = document.getElementById('modal-add-device');
     if(el) el.classList.remove('hidden');
@@ -332,6 +349,45 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
+    // --- FORGOT PASSWORD LOGIC ---
+    const btnSendReset = document.getElementById('btn-send-reset');
+    const resetMsg = document.getElementById('reset-msg');
+
+    if (btnSendReset) {
+        btnSendReset.addEventListener('click', async () => {
+            const email = document.getElementById('reset-email').value.trim();
+            if (!email) {
+                resetMsg.innerText = "Please enter your email.";
+                resetMsg.className = "text-red-500 text-xs font-bold bg-red-500/10 p-2 rounded border border-red-500/20";
+                resetMsg.classList.remove('hidden');
+                return;
+            }
+
+            btnSendReset.innerText = "Sending...";
+            btnSendReset.disabled = true;
+
+            const result = await IdentityStore.resetPassword(email);
+
+            if (result.success) {
+            // Close the auth modal
+            document.getElementById('modal-auth').classList.add('hidden');
+            document.getElementById('auth-email').value = "";
+            document.getElementById('auth-password').value = "";
+            
+            // 🔥 UPDATED: Trigger the custom styled modal instead of the ugly browser alert
+                if (result.requireVerification) {
+                document.getElementById('modal-alert').classList.remove('hidden');
+                }
+            } else {
+                resetMsg.innerText = result.message;
+                resetMsg.className = "text-red-500 text-xs font-bold bg-red-500/10 p-2 rounded border border-red-500/20";
+                resetMsg.classList.remove('hidden');
+            }
+
+            btnSendReset.innerText = "Send Link";
+            btnSendReset.disabled = false;
+        });
+    }
 });
 // ==========================================
 // UI EVENT LISTENERS & INITIALIZATION
@@ -364,10 +420,17 @@ document.addEventListener("DOMContentLoaded", () => {
         const result = isLogin ? await IdentityStore.login(email, pass) : await IdentityStore.signup(email, pass);
 
         if (result.success) {
+            // Close the auth modal
             document.getElementById('modal-auth').classList.add('hidden');
             document.getElementById('auth-email').value = "";
             document.getElementById('auth-password').value = "";
+            
+            // Trigger the beautiful custom modal
+            if (result.requireVerification) {
+                document.getElementById('modal-alert').classList.remove('hidden');
+            }
         } else {
+            // Show errors
             authError.innerText = result.message;
             authError.classList.remove('hidden');
         }
