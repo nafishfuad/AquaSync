@@ -6,19 +6,19 @@
 #include "HardwareEngine.h"
 #include "ButtonManager.h"
 #include "AquaNetworkManager.h" 
-#include "OutageTracker.h" // 🔥 NEW: Include the Autopsy Outage Tracker
+#include "OutageTracker.h" 
 
 SettingsManager settingsMgr;
 HardwareEngine  hwEngine;
 ButtonManager   btnManager(settingsMgr, hwEngine);
 AquaNetworkManager* netManager; 
-
-// 🔥 NEW: Instantiate the Tracker and pass it the settings manager
 OutageTracker outageTracker(settingsMgr); 
 
 String hwid;
 
-// 🔥 PHASE 1: The Cryptographic HWID Generator
+// 🔥 NEW: Define the task handle for our FreeRTOS Network Core
+TaskHandle_t NetworkTaskHandle;
+
 String generateSecureHWID() {
     Preferences prefs;
     prefs.begin("aqua-ctrl", false);
@@ -27,7 +27,7 @@ String generateSecureHWID() {
 
     if (hwid == "") {
         String mac = WiFi.macAddress();
-        mac.replace(":", ""); // Remove colons to make it Firebase-safe
+        mac.replace(":", ""); 
 
         const char charset[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
         String salt = "";
@@ -45,21 +45,39 @@ String generateSecureHWID() {
     return hwid;
 }
 
+// ==========================================
+// 🔥 THE NEW CORE 0: DEDICATED NETWORK LOOP
+// ==========================================
+void networkTask(void * parameter) {
+    for(;;) {
+        if (netManager != nullptr) {
+            netManager->handleClient();
+            netManager->syncFirebase();
+        }
+        
+        // 🔥 C3 WATCHDOG FIX: Increased to 50ms to prevent single-core starvation
+        vTaskDelay(50 / portTICK_PERIOD_MS); 
+    }
+}
+
+// ==========================================
+// SINGLE SETUP FUNCTION
+// ==========================================
 void setup() {
     Serial.begin(115200);
-    // Anti-Freeze for Native USB ESP32-C3
     Serial.setTxTimeoutMs(0); 
 
-    delay(1000); 
+    // 🔥 CRITICAL NATIVE USB FIX: Wait 5 FULL SECONDS for Windows to mount the COM port!
+    delay(5000); 
+
     Serial.println("\n\n=================================");
-    Serial.println("🌊 AquaSync Brain Booting...");
+    Serial.println("🌊 AquaSync RTOS Booting...");
     Serial.println("=================================");
 
-    // We must initialize WiFi first so we can read the MAC address!
-    WiFi.mode(WIFI_STA);
-    
-    // 🔥 GENERATE THE SECURE HWID
-    // Grabs the unique internal MAC address of the ESP32 chip and formats it
+    // 🔥 RADIO RESET FIX: Force the Wi-Fi chip to reset before we configure it
+    WiFi.disconnect(true);
+    delay(500);
+
     uint64_t chipid = ESP.getEfuseMac(); 
     uint16_t chip = (uint16_t)(chipid >> 32);
     char hwidStr[25];
@@ -70,14 +88,11 @@ void setup() {
     
     Serial.println("[SYS] Using Device ID: " + hwid);
 
-    // Initialize subsystems (Safely formats NVS if blank)
     settingsMgr.begin();
     hwEngine.begin();
     netManager = new AquaNetworkManager(settingsMgr, hwEngine, hwid);
 
-    // Pull Wi-Fi credentials
     Preferences prefs;
-    // 🔥 SAFE: This uses 'false' just to ensure no crashes
     prefs.begin("aqua-ctrl", false);
     String ssid = prefs.getString("ssid", "");
     String pass = prefs.getString("pass", "");
@@ -85,6 +100,7 @@ void setup() {
 
     if (ssid != "") {
         Serial.println("[WIFI] Attempting to connect to: " + ssid);
+        WiFi.mode(WIFI_STA);
         WiFi.begin(ssid.c_str(), pass.c_str());
 
         int timeout = 0;
@@ -102,34 +118,43 @@ void setup() {
         } else {
             Serial.println("[WIFI] ❌ Connection failed. Starting Hotspot Setup Mode.");
             WiFi.mode(WIFI_AP);
-            WiFi.softAP("AquaControl_setup", ""); 
+            WiFi.softAP("AquaControl_setup"); 
             Serial.println("[WIFI] 🌐 Hotspot IP: 192.168.4.1");
         }
     } else {
         Serial.println("[WIFI] 📡 No credentials found. Starting Hotspot Setup Mode.");
         WiFi.mode(WIFI_AP);
-        WiFi.softAP("AquaControl_setup", "");
+        WiFi.softAP("AquaControl_setup"); 
         Serial.println("[WIFI] 🌐 Hotspot IP: 192.168.4.1");
     }
 
     netManager->begin();
-    Serial.println("[SYS] ✅ System fully initialized and routing API requests.");
+    Serial.println("[SYS] ✅ Network Manager initialized.");
+
+    // ==========================================
+    // 🔥 IGNITE THE RTOS SCHEDULER
+    // ==========================================
+    xTaskCreate(
+        networkTask,      
+        "NetworkTask",    
+        8192,             
+        NULL,             
+        1,                
+        &NetworkTaskHandle 
+    );
+
+    Serial.println("[SYS] ✅ FreeRTOS multi-threading activated. System fully online.");
 }
 
+// ==========================================
+// THE STANDARD CORE 1: DEDICATED HARDWARE LOOP
+// ==========================================
 void loop() {
-    netManager->handleClient();
-    
     hwEngine.execute(settingsMgr.get(), settingsMgr.needsHardwareEval(), true);
-    
-    // Add Button & LED Loops
     hwEngine.handleLEDs(); 
     btnManager.loop();     
-    
-    netManager->syncFirebase();
     settingsMgr.processLazyFlashSave();
-
-    // 🔥 NEW: Run the tracker loop
     outageTracker.loop();
 
-    delay(10); 
+    delay(5); // Keep hardware loop incredibly fast and responsive
 }

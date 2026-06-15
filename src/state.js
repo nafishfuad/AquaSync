@@ -4,7 +4,7 @@
 // Add sendEmailVerification to this list!
 // Add sendPasswordResetEmail to this list
 import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendEmailVerification, sendPasswordResetEmail } from "firebase/auth";
-import { ref, onValue, set, get } from "firebase/database";
+import { ref, onValue, off, set, get } from "firebase/database";
 
 // 2. 🔥 THE CONNECTION: Import the live Auth and DB instances from your central config file
 import { auth, db } from "./firebase-config.js";
@@ -116,6 +116,11 @@ export const IdentityStore = {
     },
 
     logout() {
+        // 🔥 QA FIX: Sever the live data stream before signing out
+        if (DeviceStore._activeStreamRef) {
+            off(DeviceStore._activeStreamRef);
+            DeviceStore._activeStreamRef = null;
+        }
         signOut(auth);
     }
 };
@@ -124,8 +129,9 @@ export const IdentityStore = {
 // UPDATED: DEVICE STORE
 // ==========================================
 export const DeviceStore = {
-    activeDeviceId: null,
     devices: {},
+    activeDeviceId: null,
+    _activeStreamRef: null,
 
     // 1. LOCAL LOAD (For Guests)
     initLocal() {
@@ -153,6 +159,35 @@ export const DeviceStore = {
         
         // Trigger a custom event so your UI knows data is ready to draw
         window.dispatchEvent(new Event("aquasync_data_ready"));
+    },
+
+    // 🚀 NEW: The Cloud Streaming Engine
+    startCloudStream(hwid) {
+        if (IdentityStore.isGuest) return; // Guests don't stream from cloud
+        
+        // Close any old connections to prevent memory leaks when switching tanks
+        if (this._activeStreamRef) {
+            off(this._activeStreamRef);
+        }
+
+        // Open a live socket directly to this tank's state
+        this._activeStreamRef = ref(db, `devices/${hwid}/state`);
+        console.log(`📡 [STREAM] Live socket opened for ${hwid}`);
+
+        onValue(this._activeStreamRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                
+                // Update IP if it changed
+                if (data.localIP) this.updateNetwork(hwid, data.localIP, true);
+                
+                // Update memory instantly
+                this.updateDeviceState(hwid, data);
+                
+                // Tell main.js to redraw the screen!
+                window.dispatchEvent(new CustomEvent("aquasync_stream_update"));
+            }
+        });
     },
 
     // 🔥 NEW: The Local-to-Cloud Migration Engine
@@ -190,6 +225,12 @@ export const DeviceStore = {
                 if (!this.activeDeviceId && Object.keys(this.devices).length > 0) {
                     this.activeDeviceId = Object.keys(this.devices)[0];
                 }
+
+                // 🔥 Trigger the live stream for the currently active tank!
+                if (this.activeDeviceId) {
+                    this.startCloudStream(this.activeDeviceId);
+                }
+
                 console.log("☁️ Ecosystem loaded from Cloud");
             } else {
                 console.log("☁️ Ecosystem is empty.");
@@ -313,6 +354,7 @@ export const DeviceStore = {
         if (this.devices[hwid]) {
             this.activeDeviceId = hwid;
             this.save();
+            this.startCloudStream(hwid); // 🔥 Automatically start streaming the new tank!
         }
     },
 

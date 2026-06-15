@@ -6,7 +6,8 @@ const FIREBASE_URL = "https://aqua-fish-controller-default-rtdb.asia-southeast1.
 let localFailCount = 0;
 let forceCloudUntil = 0;
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 3000) {
+// 🔥 THE FIX: Changed timeoutMs from 3000 to 800
+async function fetchWithTimeout(url, options = {}, timeoutMs = 800) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     options.signal = controller.signal;
@@ -92,52 +93,74 @@ export const API = {
         return null;
     },
 
-    async sendCommand(device, payload) {
-        // 🔥 THE DUMMY FIREWALL: Instant success for optimistic UI rendering
+    async sendCommand(device, commandPayload) {
+        // Stop real network requests for the Demo Device
         if (device.isDummy) {
-            return { success: true, source: "cloud", returnedState: null };
+            return { 
+                success: true, 
+                source: "cloud", 
+                data: { ...device.metrics, localIP: "127.0.0.1", lastHeartbeatTs: Math.floor(Date.now() / 1000) } 
+            };
         }
 
-        const commandWrapper = {
-            v: 2,
-            ts: Math.floor(Date.now() / 1000),
-            ...payload
-        };
-
+        const commandWrapper = { ...commandPayload, timestamp: Math.floor(Date.now() / 1000) };
         const now = Date.now();
-        
-        if (device.localIP && now >= forceCloudUntil) {
+        let useCloud = false;
+        let localData = null;
+        let localSucceeded = false;
+
+        // Circuit breaker checks
+        if (now < forceCloudUntil) useCloud = true;
+        if (!device.localIP || !device.network.isWiFiConnected) useCloud = true;
+
+        // 1. Try Local Hardware First (For 1ms response time on the physical tank)
+        if (!useCloud && device.localIP) {
             try {
                 const res = await fetchWithTimeout(`http://${device.localIP}/api/control`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(commandWrapper)
                 });
-                
                 if (res.ok) {
-                    const returnedData = await res.json();
-                    return { success: true, source: "local", returnedState: returnedData };
+                    localFailCount = 0;
+                    localData = await res.json();
+                    localSucceeded = true;
+                    // 🔥 THE FIX: We removed the 'return' statement here!
+                    // Even if local succeeds, we force the code to fall through to Step 2.
                 }
             } catch (err) {
-                console.warn("[API] Local command failed, routing to cloud.");
+                localFailCount++;
+                if (localFailCount >= 2) forceCloudUntil = now + 60000;
             }
         }
 
+        // 2. ALWAYS update Cloud (So Window 2 updates instantly via SSE)
         try {
-            const res = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/commands.json`, {
+            const res = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/state.json`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(commandWrapper)
             });
+            
             if (res.ok) {
-                return { success: true, source: "cloud", returnedState: null };
+                return { 
+                    success: true, 
+                    source: localSucceeded ? "local" : "cloud", 
+                    returnedState: localData 
+                };
             }
         } catch (err) {
-            console.error("[API] Command delivery failed globally.");
+            console.error("[API] Cloud push failed.");
         }
         
+        // 3. Absolute Fallback
+        if (localSucceeded) {
+            return { success: true, source: "local", returnedState: localData };
+        }
         return { success: false, source: "none", returnedState: null };
     },
+
+    // ... Keep your existing sendWifiProvisioning and checkLatestFirmware functions below
 
     async sendWifiProvisioning(ssid, pass, token, deviceName) {
         try {

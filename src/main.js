@@ -9,18 +9,34 @@ import { debounce } from './utils.js';
 import { showOutageModal } from './components/system/OutageModal.js'; 
 
 const AquaSync = {
-    syncLoopStarted: false,
 
     async init() {
         console.log("🌊 AquaSync Ecosystem Initializing...");
         
-        // 🔥 THE FIX: Wait for state.js to finish checking Auth & loading Cloud/Local data
         window.addEventListener("aquasync_data_ready", () => {
             this.setupUI();
         });
 
-        // Start the Identity/Auth listener (this will eventually fire the event above)
         IdentityStore.init(); 
+
+        // 🔥 THE FIX: Listen for instant socket updates from state.js
+        window.addEventListener("aquasync_stream_update", () => {
+            this.setConnectionStatus("cloud");
+            this.renderActiveUI();
+        });
+
+        // 🔥 QA FIX: The Local Heartbeat Watchdog
+        // Checks local memory every 10 seconds to see if the tank went offline
+        setInterval(() => {
+            const device = DeviceStore.getActiveDevice();
+            if (device && device.metrics && device.metrics.lastHeartbeatTs) {
+                const nowSecs = Math.floor(Date.now() / 1000);
+                // If it's been more than 65 seconds since the ESP32 checked in, mark it offline
+                if (nowSecs - device.metrics.lastHeartbeatTs > 65) {
+                    this.setConnectionStatus("offline");
+                }
+            }
+        }, 10000);
     },
 
     setupUI() {
@@ -60,18 +76,6 @@ const AquaSync = {
         this.switchTab(lastOpenTab); 
         
         this.renderActiveUI();
-
-        // Prevent attaching multiple event listeners if Cloud Sync updates frequently
-        if (!this.syncLoopStarted) {
-            this.syncLoopStarted = true;
-            this.runSyncLoop();
-
-            document.addEventListener("visibilitychange", () => {
-                if (document.visibilityState === 'visible') {
-                    this.runSyncLoop();
-                }
-            });
-        }
     },
 
     switchTab(targetId) {
@@ -162,62 +166,6 @@ const AquaSync = {
         }
     },
 
-    async runSyncLoop() {
-        const device = DeviceStore.getActiveDevice();
-        if (!device) return;
-
-        if (device.firmware.latest === "Checking..." || device.firmware.latest === "Unknown") {
-            try {
-                const fullManifestReq = await fetch("https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware.json?t=" + Date.now());
-                if (fullManifestReq.ok) {
-                    const fullManifest = await fullManifestReq.json();
-                    
-                    device.firmware.latest = fullManifest[device.model]?.version || "Unknown";
-                    device.firmware.downloadUrl = fullManifest[device.model]?.firmware_url || "";
-                    device.companion.latest = fullManifest["CompanionApp"]?.version || "Unknown";
-                    device.companion.downloadUrl = fullManifest["CompanionApp"]?.download_url || "";
-                    
-                    DeviceStore.save();
-                    this.renderActiveUI();
-                } else {
-                    throw new Error("Manifest not OK");
-                }
-            } catch (e) {
-                device.firmware.latest = "Unknown";
-                device.companion.latest = "Unknown";
-                DeviceStore.save();
-                this.renderActiveUI();
-            }
-        }
-
-        const response = await API.syncDevice(device);
-        
-        if (response && response.data) {
-            const nowSecs = Math.floor(Date.now() / 1000);
-            const lastBeat = response.data.lastHeartbeatTs || nowSecs;
-            const timeSinceLastBeat = nowSecs - lastBeat;
-
-            if (response.source === "cloud" && timeSinceLastBeat > 60) {
-                this.setConnectionStatus("offline");
-            } else {
-                this.setConnectionStatus(response.source);
-            }
-            
-            if (response.data.localIP && response.data.localIP !== device.localIP) {
-                DeviceStore.updateNetwork(device.hwid, response.data.localIP, true);
-            }
-            if (response.data.capabilities) {
-                DeviceStore.updateDeviceState(device.hwid, response.data, response.data.capabilities);
-            } else {
-                DeviceStore.updateDeviceState(device.hwid, response.data);
-            }
-
-            this.renderActiveUI();
-        } else {
-            this.setConnectionStatus("offline");
-        }
-    },
-
     renderActiveUI() {
         const device = DeviceStore.getActiveDevice();
         if (!device) return;
@@ -233,7 +181,7 @@ const AquaSync = {
             } else {
                 AquaSync.updateSyncStatus('idle');
             }
-        }, 5000);
+        }, 300);
 
         const commandHook = async (payload, fastUI = false) => {
             if ((payload.hasOwnProperty("isLightOn") || payload.hasOwnProperty("currentBrightness")) && !device.metrics.isCO2ScheduleSeparate) {
@@ -470,6 +418,10 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (data.hw_id) {
                         // Success! We found the ESP32 and grabbed its ID invisibly.
                         document.getElementById('prov-hwid').value = data.hw_id;
+                        
+                        // 🔥 FIX A: Store the dynamic model safely in a dataset attribute
+                        document.getElementById('prov-hwid').dataset.model = data.model || "Aqua-Base";
+                        
                         document.getElementById('display-found-hwid').innerText = `ID: ${data.hw_id}`;
                         
                         // Switch UI to Step 2
@@ -521,8 +473,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 btnSubmit.innerText = "Registering with Cloud...";
 
-                // 2. Claim the device in our Firebase account immediately!
-                await window.handleAddNewDeviceForm(hwid, "AS-Standard", name);
+                // 🔥 FIX B: Retrieve the dynamic model we saved during the scan
+                const dynamicModel = document.getElementById('prov-hwid').dataset.model || "Aqua-Base";
+                await window.handleAddNewDeviceForm(hwid, dynamicModel, name);
 
                 // 3. Close the modal and reset it
                 document.getElementById('modal-add-device').classList.add('hidden');

@@ -191,7 +191,12 @@ private:
     void handleHandshake() {
         addCorsHeaders();
         JsonDocument doc;
-        doc["hw_id"] = _hwid; doc["session_token"] = "AQUA_SECURE_123"; 
+        doc["hw_id"] = _hwid; 
+        doc["session_token"] = "AQUA_SECURE_123"; 
+        
+        // 🔥 FIX: Send the dynamic model directly from CoreConfig.h
+        doc["model"] = DEVICE_MODEL; 
+        
         String out; serializeJson(doc, out);
         _server.send(200, "application/json", out);
     }

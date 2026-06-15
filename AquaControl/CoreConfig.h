@@ -5,7 +5,7 @@
 
 const String FW_VERSION = "v1.0.0";
 const int CURRENT_SCHEMA_VERSION = 2;
-const String DEVICE_MODEL = "AS-Standard";
+const String DEVICE_MODEL = "Aqua-Base";
 const String FIREBASE_URL = "https://aqua-fish-controller-default-rtdb.asia-southeast1.firebasedatabase.app";
 
 const int PIN_RELAY = 2;  

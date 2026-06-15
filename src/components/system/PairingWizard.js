@@ -69,6 +69,7 @@ export function renderPairingWizard(onComplete) {
 
     let secureToken = null;
     let discoveredHwid = null;
+    let discoveredModel = "Aqua-Base"; // 🔥 NEW: Fallback default
 
     const startHeartbeat = () => {
         heartbeatInterval = setInterval(async () => {
@@ -77,6 +78,9 @@ export function renderPairingWizard(onComplete) {
                 clearInterval(heartbeatInterval);
                 secureToken = handshake.session_token;
                 discoveredHwid = handshake.hw_id;
+                
+                // 🔥 NEW: Capture the model from the ESP32!
+                if (handshake.model) discoveredModel = handshake.model;
                 
                 document.getElementById("txt-found-hwid").innerText = `HW_ID: ${discoveredHwid}`;
                 document.getElementById("view-listen").classList.add("hidden");
@@ -122,12 +126,12 @@ export function renderPairingWizard(onComplete) {
         if (success) {
             btnSend.innerHTML = `✅ Paired!`;
             
-            // 🔥 FIX: Ensure the device is securely claimed to the Cloud Account (if logged in)
+            // 🔥 FIX: Pass the dynamic discoveredModel instead of "AS-Standard"
             try {
                 if (window.handleAddNewDeviceForm) {
-                    await window.handleAddNewDeviceForm(discoveredHwid, "AS-Standard", deviceName);
+                    await window.handleAddNewDeviceForm(discoveredHwid, discoveredModel, deviceName);
                 } else {
-                    await DeviceStore.claimDevice(discoveredHwid, "AS-Standard", deviceName);
+                    await DeviceStore.claimDevice(discoveredHwid, discoveredModel, deviceName);
                 }
             } catch (err) {
                 console.error("Cloud Claim Error:", err);
