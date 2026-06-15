@@ -149,6 +149,14 @@ private:
 public:
     bool _isMaintenanceMode = false;
 
+    // 🔥 NEW: Allows the Cloud Autopsy to trigger the gentle light ramp
+    void startRecoveryRamp(int currentMins, int durationMins) {
+        _isRecovering = true;
+        _recoveryStartMins = currentMins;
+        _recoveryEndMins = currentMins + durationMins;
+        Serial.printf("[HW] 💡 Starting Gentle Recovery Ramp for %d mins\n", durationMins);
+    }
+
     void begin() {
         // Higher PWM for perfectly smooth LED dimming
         analogWriteResolution(PIN_LIGHT, 8);
@@ -229,24 +237,9 @@ public:
             settings.lastTrackedDay = _prefs.getInt("lastDay", 0);
         }
 
-        // 🔥 THE FIX: Phase 2 Boot -> Wait for NTP Time to calculate Load Shedding
+        // 🔥 THE FIX: Phase 2 Boot -> Just initialize the timers. DO NOT calculate outages here!
         if (timeValid && !_hasTimeBooted) {
             _hasTimeBooted = true;
-            long lastBreadcrumb = _prefs.getLong("last_time", 0);
-            if (lastBreadcrumb > 0 && nowTime > lastBreadcrumb && (nowTime - lastBreadcrumb) >= 60) {
-                int outageMins = max(1, (int)(nowTime - lastBreadcrumb) / 60);
-                settings.totalLoadSheddingToday += outageMins;
-                int curr = timeinfo->tm_hour * 60 + timeinfo->tm_min;
-                int start = parseTime(settings.startTime);
-                int end = start + (settings.photoperiod * 60);
-                if (curr >= start && (curr - outageMins) < end) {
-                    settings.lightLoadSheddingToday += min(outageMins, (end - (curr - outageMins)));
-                    _isRecovering = true;
-                    _recoveryStartMins = curr;
-                    _recoveryEndMins = curr + settings.recoveryMins;
-                }
-                saveAnalyticsVault(settings);
-            }
             _lastBreadcrumbTick = nowMillis; 
             _lastAnalyticsSaveTick = nowMillis;
         }
@@ -319,7 +312,6 @@ public:
                 settings.lastTrackedDay = currentDayOfYear;
             }
             
-            _prefs.putLong("last_time", (long)nowTime);
             settings.awakeMinutesToday[timeinfo->tm_hour] += 1;
             if (settings.isLightOn) settings.activeMinutesToday[timeinfo->tm_hour] += 1;
         }

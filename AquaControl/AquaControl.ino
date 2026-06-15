@@ -1,5 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <HTTPClient.h>         // 🔥 NEW: Add this
+#include <WiFiClientSecure.h>   // 🔥 NEW: Add this
 #include <Preferences.h>
 #include "CoreConfig.h"
 #include "SettingsManager.h"
@@ -12,7 +14,7 @@ SettingsManager settingsMgr;
 HardwareEngine  hwEngine;
 ButtonManager   btnManager(settingsMgr, hwEngine);
 AquaNetworkManager* netManager; 
-OutageTracker outageTracker(settingsMgr); 
+OutageTracker outageTracker(settingsMgr, hwEngine); 
 
 String hwid;
 
@@ -49,13 +51,38 @@ String generateSecureHWID() {
 // 🔥 THE NEW CORE 0: DEDICATED NETWORK LOOP
 // ==========================================
 void networkTask(void * parameter) {
+    bool autopsyCompleted = false;
+
     for(;;) {
         if (netManager != nullptr) {
             netManager->handleClient();
-            netManager->syncFirebase();
+            netManager->syncFirebase(); // <-- This handles the 60s Heartbeat beautifully!
         }
         
-        // 🔥 C3 WATCHDOG FIX: Increased to 50ms to prevent single-core starvation
+        // 🔥 PHASE 3: Cloud Autopsy (Runs exactly ONCE after NTP syncs)
+        if (!autopsyCompleted && WiFi.status() == WL_CONNECTED) {
+            time_t nowTs = time(nullptr);
+            if (nowTs > 1600000000) { 
+                WiFiClientSecure client;
+                client.setInsecure();
+                HTTPClient http;
+                
+                Serial.println("[AUTOPSY] Fetching last known heartbeat from Cloud...");
+                http.begin(client, FIREBASE_URL + "/devices/" + hwid + "/state/lastHeartbeatTs.json");
+                int httpCode = http.GET();
+                
+                if (httpCode == 200) {
+                    String payload = http.getString();
+                    uint32_t cloudTs = payload.toInt();
+                    outageTracker.performCloudAutopsy(cloudTs);
+                } else {
+                    Serial.println("[AUTOPSY] Cloud fetch failed, assuming clean boot.");
+                }
+                http.end();
+                autopsyCompleted = true; // Lock it so it never runs again
+            }
+        }
+
         vTaskDelay(50 / portTICK_PERIOD_MS); 
     }
 }
@@ -154,7 +181,6 @@ void loop() {
     hwEngine.handleLEDs(); 
     btnManager.loop();     
     settingsMgr.processLazyFlashSave();
-    outageTracker.loop();
 
     delay(5); // Keep hardware loop incredibly fast and responsive
 }

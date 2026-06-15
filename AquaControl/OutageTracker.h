@@ -2,114 +2,71 @@
 #define OUTAGE_TRACKER_H
 
 #include <Arduino.h>
-#include <Preferences.h>
 #include <time.h>
 #include "SettingsManager.h"
+#include "HardwareEngine.h"
 
 class OutageTracker {
 private:
     SettingsManager& _settings;
-    unsigned long _lastSaveMillis = 0;
-    bool _bootCheckDone = false;
+    HardwareEngine& _hw;
 
-    void saveHeartbeat(time_t currentTs) {
-        Preferences p;
-        p.begin("aqua-tracker", false);
-        p.putUInt("last_alive", (uint32_t)currentTs);
-        p.end();
-    }
+public:
+    // 🔥 FIX: Now accepts the HardwareEngine so it can control the lights
+    OutageTracker(SettingsManager& s, HardwareEngine& h) : _settings(s), _hw(h) {}
 
-    void performAutopsy(time_t currentTs) {
-        Preferences p;
-        p.begin("aqua-tracker", true); // Open in Read-Only mode
-        uint32_t lastAliveTs = p.getUInt("last_alive", 0);
-        p.end();
-
-        if (lastAliveTs == 0) {
-            Serial.println("[AUTOPSY] Clean boot (No previous heartbeat found).");
+    void performCloudAutopsy(uint32_t cloudLastAliveTs) {
+        time_t nowTs = time(nullptr);
+        
+        if (cloudLastAliveTs == 0 || cloudLastAliveTs >= nowTs) {
+            Serial.println("[AUTOPSY] Clean boot or no cloud history.");
             return;
         }
 
-        uint32_t gapSeconds = currentTs - lastAliveTs;
+        uint32_t gapSeconds = nowTs - cloudLastAliveTs;
 
-        // If the gap is > 3 minutes (180s) and < 48 hours (to prevent insane bugs if offline for months)
         if (gapSeconds > 180 && gapSeconds < 172800) { 
             int gapMinutes = gapSeconds / 60;
-            Serial.printf("[AUTOPSY] 🚨 POWER OUTAGE DETECTED! Offline for %d minutes.\n", gapMinutes);
-
-            TankSettings& s = _settings.get();
-            s.totalLoadSheddingToday += gapMinutes;
-
-            // --- THE OVERLAP MATH ---
-            // Calculate exactly how many of those lost minutes happened during the photoperiod
-            int startHour = String(s.startTime).substring(0, 2).toInt();
-            int startMin = String(s.startTime).substring(3, 5).toInt();
-            int startMinsFromMidnight = (startHour * 60) + startMin;
-            int endMinsFromMidnight = startMinsFromMidnight + (s.photoperiod * 60);
-
-            int overlapMins = 0;
-            time_t stepTs = lastAliveTs;
+            Serial.printf("[AUTOPSY] 🚨 POWER OUTAGE DETECTED! System was dead for %d minutes.\n", gapMinutes);
             
-            // Step through the outage minute-by-minute
-            while (stepTs < currentTs) {
-                struct tm* stepTm = localtime(&stepTs);
-                int currentStepMins = (stepTm->tm_hour * 60) + stepTm->tm_min;
+            TankSettings& s = _settings.get();
+            s.totalLoadSheddingToday += gapMinutes; // Log total downtime
+            
+            int overlapMins = 0;
+            uint32_t stepTs = cloudLastAliveTs;
+            
+            int startH, startM;
+            sscanf(s.startTime, "%d:%d", &startH, &startM);
+            int startTotalMins = (startH * 60) + startM;
+            int endTotalMins = startTotalMins + (s.photoperiod * 60);
 
-                bool isExpectedLightOn = false;
-                if (endMinsFromMidnight > 1440) {
-                    // Schedule crosses midnight (e.g., 20:00 to 02:00)
-                    int endWrapped = endMinsFromMidnight - 1440;
-                    if (currentStepMins >= startMinsFromMidnight || currentStepMins < endWrapped) {
-                        isExpectedLightOn = true;
-                    }
-                } else {
-                    // Normal daytime schedule
-                    if (currentStepMins >= startMinsFromMidnight && currentStepMins < endMinsFromMidnight) {
-                        isExpectedLightOn = true;
-                    }
-                }
-
-                if (isExpectedLightOn) {
+            while (stepTs < (uint32_t)nowTs) {
+                time_t tempTs = stepTs;
+                struct tm* t = localtime(&tempTs);
+                int currentMins = t->tm_hour * 60 + t->tm_min;
+                
+                if (currentMins >= startTotalMins && currentMins < endTotalMins) {
                     overlapMins++;
                 }
-                stepTs += 60; // Advance time by 60 seconds
+                stepTs += 60; 
             }
 
             if (overlapMins > 0) {
                 s.lightLoadSheddingToday += overlapMins;
                 Serial.printf("[AUTOPSY] 💡 %d minutes of the outage affected the lighting schedule.\n", overlapMins);
+                
+                // 🔥 FIX: If power came back ON while the light is supposed to be on, trigger the Gentle Ramp!
+                struct tm* nowT = localtime(&nowTs);
+                int nowMins = nowT->tm_hour * 60 + nowT->tm_min;
+                if (nowMins >= startTotalMins && nowMins < endTotalMins) {
+                    _hw.startRecoveryRamp(nowMins, s.recoveryMins);
+                }
             }
 
-            // Flag the settings so the NetworkManager pushes this new data to Firebase immediately
             _settings.triggerLazySave();
 
         } else if (gapSeconds <= 180) {
             Serial.println("[AUTOPSY] Normal system reboot detected. (Gap < 3 mins)");
-        }
-    }
-
-public:
-    OutageTracker(SettingsManager& s) : _settings(s) {}
-
-    void loop() {
-        time_t nowTs = time(nullptr);
-        
-        // Wait until the ESP32 has actually synced its time with an NTP server via Wi-Fi
-        // (1600000000 is roughly the year 2020. If time is less than this, NTP hasn't synced yet)
-        if (nowTs < 1600000000) return; 
-
-        // 1. Run the Autopsy exactly once after booting and getting the correct time
-        if (!_bootCheckDone) {
-            performAutopsy(nowTs);
-            _bootCheckDone = true;
-            _lastSaveMillis = millis();
-            saveHeartbeat(nowTs);
-        }
-
-        // 2. Save a heartbeat every 60 seconds while running normally
-        if (millis() - _lastSaveMillis > 60000) {
-            saveHeartbeat(nowTs);
-            _lastSaveMillis = millis();
         }
     }
 };
