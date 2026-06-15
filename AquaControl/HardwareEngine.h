@@ -15,6 +15,13 @@ private:
     float _currentActualPWM = 0.0;
     float _targetPWM = 0.0;
 
+    // 🔥 THE CACHE FIX: Stops the ESP32 from spamming the GPIO registers!
+    // This drops CPU utilization and stops the chip from getting hot.
+    int _lastLightPWM = -1;
+    int _lastRelayState = -1;
+    int _lastCO2State = -1;
+    int _lastFanPWM = -1;
+
     unsigned long _lastLogTime = 0; 
     unsigned long _lastEvalTime = 0; 
     unsigned long _lastMuscleTick = 0;
@@ -45,7 +52,6 @@ private:
         _prefs.putBytes("actMins", settings.activeMinutesToday, sizeof(settings.activeMinutesToday));
         _prefs.putBytes("awkMins", settings.awakeMinutesToday, sizeof(settings.awakeMinutesToday));
         
-        // 🔥 CRITICAL FIX: Ensure 30-day History Arrays are written to Flash
         _prefs.putBytes("actHist", settings.activeMinutesHistory, sizeof(settings.activeMinutesHistory));
         _prefs.putBytes("awkHist", settings.awakeMinutesHistory, sizeof(settings.awakeMinutesHistory));
         
@@ -63,13 +69,11 @@ private:
     }
 
     void evaluateAutoSchedule(TankSettings& settings) {
-        // Track mode switches
         if (!settings.isAutoMode) {
             _lastAutoModeState = false; 
             return;
         }
 
-        // 🔥 THE FIX: If we just clicked "Resume Auto", clear all physical hardware locks instantly!
         if (!_lastAutoModeState) {
             _overrideLight = false;
             _overrideCO2 = false;
@@ -98,7 +102,7 @@ private:
 
             if (_isRecovering) {
                 int currentMins = currentSecs / 60;
-                if (currentMins >= _recoveryEndMins) {
+                if (_recoveryEndMins <= _recoveryStartMins || currentMins >= _recoveryEndMins) {
                     _isRecovering = false; 
                     targetBright = maxB;
                 } else {
@@ -107,7 +111,6 @@ private:
             } else {
                 targetBright = maxB;
                 if (settings.isDimmerEnabled) {
-                    // 🔥 THE FIX: Use max(1, val) to mathematically prevent Division by Zero crashes
                     int sunriseSecs = max(1, settings.sunriseMins * 60);
                     int sunsetSecs  = max(1, settings.sunsetMins * 60);
                     
@@ -149,7 +152,15 @@ private:
 public:
     bool _isMaintenanceMode = false;
 
-    // 🔥 NEW: Allows the Cloud Autopsy to trigger the gentle light ramp
+    // 🔥 THE FIX: Explicitly clears overrides when "Resume Auto" is clicked
+    void forceResumeAuto() {
+        _overrideLight = false;
+        _overrideCO2 = false;
+        _overrideFan = false;
+        _lastAutoModeState = false; // Forces the engine to instantly recalculate pins on the next tick
+        Serial.println("[HW] 🔄 Auto Schedule Forced Resume");
+    }
+
     void startRecoveryRamp(int currentMins, int durationMins) {
         _isRecovering = true;
         _recoveryStartMins = currentMins;
@@ -158,7 +169,6 @@ public:
     }
 
     void begin() {
-        // Higher PWM for perfectly smooth LED dimming
         analogWriteResolution(PIN_LIGHT, 8);
         analogWriteFrequency(PIN_LIGHT, 5000); 
         analogWriteResolution(PIN_FAN, 8);
@@ -222,13 +232,11 @@ public:
         struct tm* timeinfo = localtime(&nowTime);
         bool timeValid = (timeinfo->tm_year >= 120);
 
-        // 🔥 THE FIX: Phase 1 Boot -> Load Memory instantly, even without Internet!
         if (!_hasBooted) {
             _hasBooted = true;
             _prefs.getBytes("actMins", settings.activeMinutesToday, sizeof(settings.activeMinutesToday));
             _prefs.getBytes("awkMins", settings.awakeMinutesToday, sizeof(settings.awakeMinutesToday));
             
-            // 🔥 CRITICAL FIX: Load History on Boot
             _prefs.getBytes("actHist", settings.activeMinutesHistory, sizeof(settings.activeMinutesHistory));
             _prefs.getBytes("awkHist", settings.awakeMinutesHistory, sizeof(settings.awakeMinutesHistory));
             
@@ -237,7 +245,6 @@ public:
             settings.lastTrackedDay = _prefs.getInt("lastDay", 0);
         }
 
-        // 🔥 THE FIX: Phase 2 Boot -> Just initialize the timers. DO NOT calculate outages here!
         if (timeValid && !_hasTimeBooted) {
             _hasTimeBooted = true;
             _lastBreadcrumbTick = nowMillis; 
@@ -262,31 +269,50 @@ public:
             if (_currentActualPWM > 100.0) _currentActualPWM = 100.0;
         }
         
-        analogWrite(PIN_LIGHT, settings.isLightOn ? map((int)_currentActualPWM, 0, 100, 255, 0) : 255);
-        digitalWrite(PIN_RELAY, (settings.isLightOn || settings.isCO2On || (settings.isFanEnabled && settings.isFanOn)) ? HIGH : LOW);
-        digitalWrite(PIN_CO2, settings.isCO2On ? LOW : HIGH);
-        analogWrite(PIN_FAN, (settings.isFanEnabled && settings.isFanOn) ? map(settings.fanSpeed, 0, 100, 255, 0) : 255);
+        // ==========================================
+        // 🔥 THE REGISTER SPAM CACHE FIX
+        // ==========================================
+        int currentLightPWM = settings.isLightOn ? map((int)_currentActualPWM, 0, 100, 255, 0) : 255;
+        if (currentLightPWM != _lastLightPWM) {
+            analogWrite(PIN_LIGHT, currentLightPWM);
+            _lastLightPWM = currentLightPWM;
+        }
+
+        int currentRelay = (settings.isLightOn || settings.isCO2On || (settings.isFanEnabled && settings.isFanOn)) ? HIGH : LOW;
+        if (currentRelay != _lastRelayState) {
+            digitalWrite(PIN_RELAY, currentRelay);
+            _lastRelayState = currentRelay;
+        }
+
+        int currentCO2 = settings.isCO2On ? LOW : HIGH;
+        if (currentCO2 != _lastCO2State) {
+            digitalWrite(PIN_CO2, currentCO2);
+            _lastCO2State = currentCO2;
+        }
+
+        int currentFanPWM = (settings.isFanEnabled && settings.isFanOn) ? map(settings.fanSpeed, 0, 100, 255, 0) : 255;
+        if (currentFanPWM != _lastFanPWM) {
+            analogWrite(PIN_FAN, currentFanPWM);
+            _lastFanPWM = currentFanPWM;
+        }
+        // ==========================================
 
         if (timeValid && (nowMillis - _lastBreadcrumbTick >= 60000)) {
             _lastBreadcrumbTick = nowMillis;
             
-            // Check how many days have passed mathematically
             int currentDayOfYear = timeinfo->tm_yday; 
             
             if (settings.lastTrackedDay != 0 && settings.lastTrackedDay != currentDayOfYear) {
                 
-                // 🔥 THE FIX: Calculate missed days (Handles power outages over 24+ hours securely)
                 int daysMissed = currentDayOfYear - settings.lastTrackedDay;
-                if (daysMissed < 0) daysMissed += 365; // Handle New Year rollover
-                if (daysMissed > 30) daysMissed = 30;  // Cap at array size
+                if (daysMissed < 0) daysMissed += 365; 
+                if (daysMissed > 30) daysMissed = 30;  
                 
-                // Shift History Arrays mathematically based on missed days
                 for (int i = 29; i >= daysMissed; i--) {
                     settings.activeMinutesHistory[i] = settings.activeMinutesHistory[i - daysMissed];
                     settings.awakeMinutesHistory[i] = settings.awakeMinutesHistory[i - daysMissed];
                 }
                 
-                // Backfill missed offline days with 0s
                 for (int i = 1; i < daysMissed; i++) {
                     settings.activeMinutesHistory[i] = 0;
                     settings.awakeMinutesHistory[i] = 0;
@@ -316,7 +342,6 @@ public:
             if (settings.isLightOn) settings.activeMinutesToday[timeinfo->tm_hour] += 1;
         }
 
-        // 1 HOUR NVS SAVE
         if (timeValid && (nowMillis - _lastAnalyticsSaveTick >= 3600000)) {
             _lastAnalyticsSaveTick = nowMillis;
             saveAnalyticsVault(settings);

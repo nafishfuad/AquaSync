@@ -14,6 +14,10 @@ private:
     bool _lastState = false; 
     unsigned long _pressTime = 0;
     unsigned long _releaseTime = 0;
+    
+    // 🔥 NEW: The Software Debounce Timer
+    unsigned long _lastDebounceTime = 0; 
+    
     int _clickCount = 0;
     bool _handledHold = false; 
     
@@ -25,7 +29,6 @@ private:
 
     void executeNormalCommand() {
         TankSettings& s = _settings.get();
-        
         if (_clickCount == 1) {
             s.isLightOn = !s.isLightOn;
             if (s.isLightOn && s.currentBrightness == 0) s.currentBrightness = s.maxBrightness;
@@ -45,7 +48,6 @@ private:
             _hw.triggerLEDPattern("LOCAL");
             Serial.println("[BTN] 3 Clicks -> Fan Toggled");
         }
-        
         _settings.triggerLazySave(); 
     }
 
@@ -53,8 +55,16 @@ public:
     ButtonManager(SettingsManager& s, HardwareEngine& h) : _settings(s), _hw(h) {}
 
     void loop() {
-        bool currentState = digitalRead(PIN_BTN) == LOW; 
+        bool reading = digitalRead(PIN_BTN) == LOW; 
         unsigned long now = millis();
+
+        // 🔥 THE FIX: Hardware Debouncer. Ignore microscopic metal bounces under 50ms.
+        if (reading != _lastState) {
+            if (now - _lastDebounceTime < 50) return; 
+            _lastDebounceTime = now;
+        }
+
+        bool currentState = reading;
 
         if (currentState && !_lastState) {
             _pressTime = now;
@@ -64,12 +74,10 @@ public:
 
         unsigned long holdDuration = now - _pressTime;
         if (currentState && holdDuration > 500) {
-            
             if (!_isMaintenanceMode) {
                 if (_clickCount == 1) { 
                     _isDimmingActive = true;
                     _handledHold = true;
-                    
                     if (now - _lastDimIncrement > 1000) { 
                         _lastDimIncrement = now;
                         TankSettings& s = _settings.get();
@@ -78,7 +86,6 @@ public:
                         if (s.currentBrightness > 100) s.currentBrightness = 10; 
                         _hw.applyManualOverride("LIGHT", true);
                         _hw.triggerLEDPattern("LOCAL"); 
-                        Serial.printf("[BTN] Dimming... %d%%\n", s.currentBrightness);
                     }
                 } 
                 else if (_clickCount == 3) { 
@@ -94,7 +101,6 @@ public:
 
         if (!currentState && _lastState) {
             _releaseTime = now;
-            
             if (_isDimmingActive) {
                 _isDimmingActive = false;
                 _settings.triggerLazySave(); 
@@ -102,32 +108,18 @@ public:
             } 
             else if (_isMaintenanceMode && holdDuration > 500) {
                 if (holdDuration >= 8000) {
-                    Serial.println("[BTN] 🧨 FACTORY RESET CONFIRMED");
+                    Serial.println("[BTN] 🧨 FACTORY RESET");
                     _hw.triggerLEDPattern("RESET");
-                    
                     unsigned long flashStart = millis();
                     while(millis() - flashStart < 3000) _hw.handleLEDs(); 
-                    
-                    Preferences p; 
-                    p.begin("aqua-ctrl", false); 
-                    p.clear(); 
-                    // 🔥 THE DEATH RATTLE FLAG: Tell the next boot sequence to nuke the Cloud lock
-                    p.putBool("nuke_cloud", true); 
-                    p.end();
-                    
-                    p.begin("aqua-tracker", false); 
-                    p.clear(); 
-                    p.end();
-                    
+                    Preferences p; p.begin("aqua-ctrl", false); p.clear(); p.putBool("nuke_cloud", true); p.end();
                     ESP.restart();
                 } 
                 else if (holdDuration >= 3000) {
-                    Serial.println("[BTN] 🔄 REBOOT CONFIRMED");
+                    Serial.println("[BTN] 🔄 REBOOT");
                     _hw.triggerLEDPattern("REBOOT");
-                    
                     unsigned long flashStart = millis();
                     while(millis() - flashStart < 1500) _hw.handleLEDs(); 
-                    
                     ESP.restart();
                 }
             } 
@@ -144,7 +136,6 @@ public:
         if (_isMaintenanceMode && !currentState && (now - _maintenanceStartTime > 5000)) {
             _isMaintenanceMode = false;
             _hw._isMaintenanceMode = false; 
-            Serial.println("[BTN] ⚠️ EXITED MAINTENANCE MODE (Timeout)");
         }
 
         _lastState = currentState;

@@ -45,7 +45,13 @@ public:
                 struct tm* t = localtime(&tempTs);
                 int currentMins = t->tm_hour * 60 + t->tm_min;
                 
-                if (currentMins >= startTotalMins && currentMins < endTotalMins) {
+                // 🔥 THE FIX: Wrap currentMins by 24h if the schedule crosses midnight
+                int evalMins = currentMins;
+                if (evalMins < startTotalMins && endTotalMins > 1440) {
+                    evalMins += 1440;
+                }
+                
+                if (evalMins >= startTotalMins && evalMins < endTotalMins) {
                     overlapMins++;
                 }
                 stepTs += 60; 

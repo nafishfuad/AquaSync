@@ -20,7 +20,6 @@ private:
     TankSettings _shadow; 
     bool _shadowInit = false;
 
-    // 🔥 OPTIMIZATION A: Initialize to a negative offset so the command fetch fires INSTANTLY on boot!
     unsigned long _lastFirebasePull = -15000; 
     unsigned long _lastHeartbeat = 0;
     unsigned long _lastAnalyticsPush = 0;
@@ -179,7 +178,26 @@ private:
             return;
         }
 
+        // 🔥 THE FIX: Apply Manual Overrides when the Web App sends a command!
         if (_settingsMgr.updateFromJson(doc.as<JsonObject>())) {
+            
+            // 🔥 THE FIX: If "Resume Auto" is clicked, clear all overrides!
+            if (doc.containsKey("isAutoMode") && doc["isAutoMode"].as<bool>() == true) {
+                _hwEngine.forceResumeAuto();
+            }
+
+            if (doc.containsKey("isLightOn")) {
+                bool turnedOn = doc["isLightOn"].as<bool>();
+                _hwEngine.applyManualOverride("LIGHT", turnedOn);
+                // Safe default: if turned on but brightness is 0, bump it up
+                if (turnedOn && _settingsMgr.get().currentBrightness == 0) {
+                    _settingsMgr.get().currentBrightness = _settingsMgr.get().maxBrightness;
+                }
+            }
+            if (doc.containsKey("currentBrightness")) _hwEngine.applyManualOverride("LIGHT", true);
+            if (doc.containsKey("isCO2On")) _hwEngine.applyManualOverride("CO2", doc["isCO2On"].as<bool>());
+            if (doc.containsKey("isFanOn")) _hwEngine.applyManualOverride("FAN", doc["isFanOn"].as<bool>());
+
             _hwEngine.execute(_settingsMgr.get(), true, false);
             _lastCommandReceivedTime = millis();
             _server.send(200, "application/json", "{\"status\":\"success\"}"); 
@@ -193,8 +211,6 @@ private:
         JsonDocument doc;
         doc["hw_id"] = _hwid; 
         doc["session_token"] = "AQUA_SECURE_123"; 
-        
-        // 🔥 FIX: Send the dynamic model directly from CoreConfig.h
         doc["model"] = DEVICE_MODEL; 
         
         String out; serializeJson(doc, out);
@@ -238,32 +254,76 @@ public:
         unsigned long now = millis();
         if (WiFi.status() != WL_CONNECTED) return;
 
+        // 🔥 THE FIX: The "Gatekeeper". Instantly calculate if we need the cloud.
+        bool needsInitial = !_hasFetchedInitialConfig;
+        bool needsPull = (now - _lastFirebasePull > 15000);
+        bool needsHeartbeat = (now - _lastHeartbeat > 60000);
+
+        bool isDebouncedPush = (_settingsMgr.needsFirebaseSync() && (now - _lastCommandReceivedTime > 5000));
+        bool isHourlyPush = (now - _lastAnalyticsPush > 3600000);
+
+        TankSettings& s = _settingsMgr.get();
+        bool isAutonomousChange = _shadowInit && (
+            s.isLightOn != _shadow.isLightOn ||
+            s.isCO2On != _shadow.isCO2On ||
+            s.isFanOn != _shadow.isFanOn ||
+            s.currentBrightness != _shadow.currentBrightness
+        );
+
+        // Slow checks (NVS Flash Memory & Time conversions) are rate-limited to once every 10 seconds.
+        static unsigned long lastSlowChecks = 0;
+        bool needsNvsCheck = false;
+        bool isRolloverPush = false;
+
+        if (now - lastSlowChecks > 10000) {
+            needsNvsCheck = true;
+            time_t nowTime = time(nullptr);
+            struct tm* timeinfo = localtime(&nowTime);
+            if (timeinfo->tm_year >= 120) {
+                int currentDayOfYear = timeinfo->tm_yday;
+                if (_lastPushedDayOfYear != -1 && currentDayOfYear != _lastPushedDayOfYear) {
+                    isRolloverPush = true; 
+                }
+                _lastPushedDayOfYear = currentDayOfYear;
+            }
+        }
+
+        // 🚀 EARLY EXIT: If nothing needs to happen, exit in 0.001ms. Save the CPU!
+        if (!needsInitial && !needsPull && !needsHeartbeat && !isDebouncedPush && !isHourlyPush && !isAutonomousChange && !isRolloverPush && !needsNvsCheck) {
+            return; 
+        }
+
+        // ==========================================
+        // 🌐 IF WE REACH HERE, NETWORK OR FLASH IS NEEDED
+        // ==========================================
+        
+        // NOW it is safe to instantiate the heavy SSL wrappers!
         WiFiClientSecure client;
         client.setInsecure();
         HTTPClient http;
 
-        // 🔥 THE CLOUD OVERRIDE CHECK
-        Preferences p;
-        p.begin("aqua-ctrl", false);
-        if (p.getBool("nuke_cloud", false)) {
-            Serial.println("[SEC] 🚨 Executing Cloud Override Sever Command...");
-            http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/ownerUid.json");
-            http.addHeader("Content-Type", "application/json");
-            
-            // Send a DELETE request to wipe the ownerUid, turning it into an orphan
-            int response = http.sendRequest("DELETE");
-            
-            if (response == 200) {
-                Serial.println("[SEC] ✅ Cloud Lock severed. Device is now an Orphan.");
-                p.putBool("nuke_cloud", false); // Clear the flag, job is done.
+        // 1. Cloud Override Check (Now runs every 10s, not 50ms)
+        if (needsNvsCheck) {
+            lastSlowChecks = now; 
+            Preferences p;
+            p.begin("aqua-ctrl", false);
+            if (p.getBool("nuke_cloud", false)) {
+                Serial.println("[SEC] 🚨 Executing Cloud Override Sever Command...");
+                http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/ownerUid.json");
+                int response = http.sendRequest("DELETE");
+                if (response == 200) {
+                    Serial.println("[SEC] ✅ Cloud Lock severed. Device is now an Orphan.");
+                    p.putBool("nuke_cloud", false); 
+                }
+                http.end();
+                p.end();
+                return; // Skip normal syncing for this tick
             }
-            http.end();
             p.end();
-            return; // Skip normal syncing for this tick until next loop
         }
-        p.end();
 
-        if (!_hasFetchedInitialConfig) {
+        // 2. Initial Config Fetch
+        if (needsInitial) {
             bool offlineChangesExist = _settingsMgr.needsFirebaseSync();
             http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
             
@@ -280,7 +340,8 @@ public:
             _shadowInit = false; 
         }
 
-        if (now - _lastFirebasePull > 15000) {
+        // 3. Command Pull (Every 15s)
+        if (needsPull) {
             _lastFirebasePull = now;
             String cmdUrl = FIREBASE_URL + "/devices/" + _hwid + "/commands.json";
             http.begin(client, cmdUrl);
@@ -340,7 +401,25 @@ public:
                             return;
                         }
 
+                        // 🔥 THE FIX: Apply the exact same Overrides for Cloud Commands
                         if (_settingsMgr.updateFromJson(cmdDoc.as<JsonObject>())) {
+                            
+                            // 🔥 THE FIX: If "Resume Auto" is clicked from the cloud, clear overrides!
+                            if (cmdDoc.containsKey("isAutoMode") && cmdDoc["isAutoMode"].as<bool>() == true) {
+                                _hwEngine.forceResumeAuto();
+                            }
+
+                            if (cmdDoc.containsKey("isLightOn")) {
+                                bool turnedOn = cmdDoc["isLightOn"].as<bool>();
+                                _hwEngine.applyManualOverride("LIGHT", turnedOn);
+                                if (turnedOn && _settingsMgr.get().currentBrightness == 0) {
+                                    _settingsMgr.get().currentBrightness = _settingsMgr.get().maxBrightness;
+                                }
+                            }
+                            if (cmdDoc.containsKey("currentBrightness")) _hwEngine.applyManualOverride("LIGHT", true);
+                            if (cmdDoc.containsKey("isCO2On")) _hwEngine.applyManualOverride("CO2", cmdDoc["isCO2On"].as<bool>());
+                            if (cmdDoc.containsKey("isFanOn")) _hwEngine.applyManualOverride("FAN", cmdDoc["isFanOn"].as<bool>());
+                            
                             _lastCommandReceivedTime = millis();
                         }
                         http.end();
@@ -352,7 +431,8 @@ public:
             http.end();
         }
 
-        if (now - _lastHeartbeat > 60000) {
+        // 4. Heartbeat Push (Every 60s)
+        if (needsHeartbeat) {
             _lastHeartbeat = now;
             http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
             http.addHeader("Content-Type", "application/json");
@@ -360,29 +440,7 @@ public:
             http.end();
         }
 
-        bool isDebouncedPush = (_settingsMgr.needsFirebaseSync() && (now - _lastCommandReceivedTime > 5000)); 
-        bool isHourlyPush = (now - _lastAnalyticsPush > 3600000);
-
-        TankSettings& s = _settingsMgr.get();
-
-        bool isAutonomousChange = _shadowInit && (
-            s.isLightOn != _shadow.isLightOn ||
-            s.isCO2On != _shadow.isCO2On ||
-            s.isFanOn != _shadow.isFanOn ||
-            s.currentBrightness != _shadow.currentBrightness
-        );
-
-        bool isRolloverPush = false;
-        time_t nowTime = time(nullptr);
-        struct tm* timeinfo = localtime(&nowTime);
-        if (timeinfo->tm_year >= 120) {
-            int currentDayOfYear = timeinfo->tm_yday;
-            if (_lastPushedDayOfYear != -1 && currentDayOfYear != _lastPushedDayOfYear) {
-                isRolloverPush = true; 
-            }
-            _lastPushedDayOfYear = currentDayOfYear;
-        }
-
+        // 5. Delta Push
         if (!_shadowInit || isDebouncedPush || isHourlyPush || isAutonomousChange || isRolloverPush) {
             TankSettings backupShadow = _shadow; 
             String deltaJson = generateDeltaStateJson();

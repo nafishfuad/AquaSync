@@ -6,8 +6,8 @@ const FIREBASE_URL = "https://aqua-fish-controller-default-rtdb.asia-southeast1.
 let localFailCount = 0;
 let forceCloudUntil = 0;
 
-// 🔥 THE FIX: Changed timeoutMs from 3000 to 800
-async function fetchWithTimeout(url, options = {}, timeoutMs = 800) {
+// 🔥 FIX 1: Relax the timeout to 2500ms so the Web App waits for the ESP32 to finish background SSL tasks
+async function fetchWithTimeout(url, options = {}, timeoutMs = 2500) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     options.signal = controller.signal;
@@ -23,76 +23,6 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 800) {
 }
 
 export const API = {
-    async syncDevice(device) {
-        // 🔥 THE DUMMY FIREWALL: Stop real network requests for the Demo Device
-        if (device.isDummy) {
-            return { 
-                success: true, 
-                source: "cloud", 
-                data: { ...device.metrics, localIP: "127.0.0.1", lastHeartbeatTs: Math.floor(Date.now() / 1000) } 
-            };
-        }
-
-        const now = Date.now();
-        let useCloud = false;
-        let localData = null;
-        let finalSource = "cloud";
-
-        if (now < forceCloudUntil || !device.localIP) {
-            useCloud = true;
-        }
-
-        if (!useCloud) {
-            try {
-                const response = await fetchWithTimeout(`http://${device.localIP}/info`, {}, 2000);
-                if (!response.ok) throw new Error("Local HTTP Error");
-                
-                localData = await response.json();
-                localFailCount = 0; 
-                finalSource = "local";
-            } catch (err) {
-                localFailCount++;
-                if (localFailCount >= 3) {
-                    console.warn("[API] Local network unstable. Tripping Circuit Breaker to Cloud-Only for 60s.");
-                    forceCloudUntil = now + 60000; 
-                }
-            }
-        }
-
-        try {
-            const response = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/state.json?t=${Date.now()}`);
-            if (!response.ok) throw new Error("Cloud HTTP Error");
-            
-            const cloudData = await response.json();
-            
-            if (cloudData === null) {
-                console.warn("[API] Firebase returned a phantom null state. Ignoring to protect UI.");
-                if (localData) return { source: finalSource, data: localData }; 
-                throw new Error("Phantom State Detected");
-            }
-            
-            const mergedData = localData ? { ...cloudData, ...localData } : cloudData;
-            return { source: finalSource, data: mergedData };
-            
-        } catch (err) {
-            console.error("[API] Cloud sync failed or returned invalid data.");
-            if (localData) return { source: finalSource, data: localData };
-            return null; 
-        }
-    },
-
-    async checkHotspotHandshake() {
-        try {
-            const response = await fetchWithTimeout('http://192.168.4.1/api/handshake', {}, 3000);
-            if (response.ok) {
-                return await response.json(); 
-            }
-        } catch (err) {
-            return null; 
-        }
-        return null;
-    },
-
     async sendCommand(device, commandPayload) {
         // Stop real network requests for the Demo Device
         if (device.isDummy) {
@@ -113,7 +43,7 @@ export const API = {
         if (now < forceCloudUntil) useCloud = true;
         if (!device.localIP || !device.network.isWiFiConnected) useCloud = true;
 
-        // 1. Try Local Hardware First (For 1ms response time on the physical tank)
+        // 1. Try Local Hardware First
         if (!useCloud && device.localIP) {
             try {
                 const res = await fetchWithTimeout(`http://${device.localIP}/api/control`, {
@@ -125,22 +55,31 @@ export const API = {
                     localFailCount = 0;
                     localData = await res.json();
                     localSucceeded = true;
-                    // 🔥 THE FIX: We removed the 'return' statement here!
-                    // Even if local succeeds, we force the code to fall through to Step 2.
                 }
             } catch (err) {
                 localFailCount++;
                 if (localFailCount >= 2) forceCloudUntil = now + 60000;
+                useCloud = true; // 🔥 CRITICAL: If local fails, immediately engage the Cloud logic below!
             }
         }
 
-        // 2. ALWAYS update Cloud (So Window 2 updates instantly via SSE)
+        // 2. The Cloud Protocol
         try {
+            // ALWAYS patch State for instant Web UI Sync across other devices
             const res = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/state.json`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(commandWrapper)
             });
+            
+            // 🔥 FIX 2: If Local IP failed or is blacklisted, we MUST push to the 'commands' queue so the hardware sees it!
+            if (useCloud || !localSucceeded) {
+                await fetch(`${FIREBASE_URL}/devices/${device.hwid}/commands.json`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(commandWrapper)
+                });
+            }
             
             if (res.ok) {
                 return { 
@@ -159,8 +98,6 @@ export const API = {
         }
         return { success: false, source: "none", returnedState: null };
     },
-
-    // ... Keep your existing sendWifiProvisioning and checkLatestFirmware functions below
 
     async sendWifiProvisioning(ssid, pass, token, deviceName) {
         try {
