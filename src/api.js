@@ -23,9 +23,30 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 2500) {
 }
 
 export const API = {
+    // 🔥 THE FIX: Restored the Hotspot Discovery Scanner
+    async checkHotspotHandshake() {
+        try {
+            const response = await fetchWithTimeout('http://192.168.4.1/api/handshake', {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+            }, 3000);
+            
+            if (response.ok) {
+                return await response.json();
+            }
+            return null;
+        } catch (err) {
+            return null; // Silently fail so the scanner can keep trying
+        }
+    },
+
     async sendCommand(device, commandPayload) {
         if (device.isDummy) {
-            return { success: true, source: "cloud", data: { ...device.metrics, localIP: "127.0.0.1", lastHeartbeatTs: Math.floor(Date.now() / 1000) } };
+            return { 
+                success: true, 
+                source: "cloud", 
+                data: { ...device.metrics, localIP: "127.0.0.1", lastHeartbeatTs: Math.floor(Date.now() / 1000) } 
+            };
         }
 
         const now = Date.now();
@@ -33,12 +54,11 @@ export const API = {
         let useCloud = false;
         let localSucceeded = false;
 
-        // Circuit breaker: Fall back to cloud if local failed recently
         if (now < forceCloudUntil || !device.localIP || !device.network.isWiFiConnected) {
             useCloud = true;
         }
 
-        // 1. Try Local Hardware Control API
+        // 1. Try Local Hardware First
         if (!useCloud && device.localIP) {
             try {
                 const res = await fetchWithTimeout(`http://${device.localIP}/api/control`, {
@@ -57,13 +77,11 @@ export const API = {
             }
         }
 
-        // 2. The Cloud CQRS Protocol (1-Way Intent Routing)
+        // 2. The Cloud CQRS Protocol
         try {
-            // Authenticate the push
             const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
             const authQuery = token ? `?auth=${token}` : "";
 
-            // 🔥 FIX: We must PATCH the entire object so payloads (like OTA versions) aren't lost!
             if (commandWrapper.command || useCloud || !localSucceeded) {
                 await fetch(`${FIREBASE_URL}/devices/${device.hwid}/config.json${authQuery}`, {
                     method: 'PATCH',
@@ -88,6 +106,7 @@ export const API = {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ssid, pass, token, deviceName }) 
             }, 10000); 
+            
             return response.ok;
         } catch (err) {
             console.warn("[API] Provisioning connection dropped (Likely rebooting).");
@@ -99,9 +118,11 @@ export const API = {
         try {
             const response = await fetch("https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware.json?t=" + Date.now());
             if (!response.ok) return null;
+            
             const data = await response.json();
             return data[model] || null; 
         } catch (err) {
+            console.error("[API] Failed to fetch OTA manifest from GitHub.", err);
             return null;
         }
     }

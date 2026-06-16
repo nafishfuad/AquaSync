@@ -2,8 +2,8 @@
 #define AQUA_NETWORK_MANAGER_H
 
 #include <WebServer.h>
-#include <WiFiClientSecure.h>   // 🔥 FIX 1: Restored for OTA Updates
-#include <HTTPUpdate.h>         // 🔥 FIX 1: Restored for OTA Updates
+#include <WiFiClientSecure.h>   
+#include <HTTPUpdate.h>         
 #include <Firebase_ESP_Client.h>
 #include <addons/TokenHelper.h>
 #include <addons/RTDBHelper.h>
@@ -31,7 +31,7 @@ private:
 
     void addCorsHeaders() {
         _server.sendHeader("Access-Control-Allow-Origin", "*");
-        _server.sendHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PATCH, DELETE");
+        _server.sendHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PATCH, DELETE, PUT");
         _server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
     }
 
@@ -108,7 +108,34 @@ private:
         }
     }
 
-    // 🔥 FIX 2: Removed lambda callback issues by polling the stream directly
+    // 🔥 THE FIX: Restored the Missing Pairing Wizard APIs
+    void handleHandshake() {
+        addCorsHeaders();
+        JsonDocument doc;
+        doc["hw_id"] = _hwid; 
+        doc["session_token"] = "AQUA_SECURE_123"; 
+        doc["model"] = DEVICE_MODEL; 
+        String out; serializeJson(doc, out);
+        _server.send(200, "application/json", out);
+    }
+
+    void handleWifiProvisioning() {
+        addCorsHeaders();
+        if (_server.method() == HTTP_OPTIONS) { _server.send(204, "text/plain", ""); return; }
+        if (!_server.hasArg("plain")) return;
+        JsonDocument doc; if (deserializeJson(doc, _server.arg("plain"))) return;
+
+        Preferences prefs;
+        prefs.begin("aqua-ctrl", false);
+        prefs.putString("ssid", doc["ssid"].as<String>());
+        prefs.putString("pass", doc["pass"].as<String>());
+        if (doc.containsKey("deviceName")) prefs.putString("devName", doc["deviceName"].as<String>());
+        prefs.end();
+
+        _server.send(200, "application/json", "{\"status\":\"rebooting\"}");
+        delay(500); WiFi.disconnect(true, true); delay(500); ESP.restart();
+    }
+
     void handleStreamEvent() {
         if (_streamFbdo.dataTypeEnum() == firebase_rtdb_data_type_json) {
             JsonDocument doc;
@@ -171,6 +198,13 @@ public:
     void begin() {
         _server.onNotFound([this]() { handlePreflight(); });
         _server.on("/info", HTTP_GET, [this]() { handleInfo(); });
+        
+        // 🔥 THE FIX: Restored the Hotspot Wizard APIs Routes
+        _server.on("/api/handshake", HTTP_GET, [this]() { handleHandshake(); });
+        _server.on("/api/handshake", HTTP_OPTIONS, [this]() { handlePreflight(); });
+        _server.on("/wifi", HTTP_POST, [this]() { handleWifiProvisioning(); });
+        _server.on("/wifi", HTTP_OPTIONS, [this]() { handlePreflight(); });
+
         _server.on("/api/control", HTTP_POST, [this]() { handleControl(); });
         _server.on("/api/control", HTTP_OPTIONS, [this]() { handlePreflight(); }); 
         _server.begin();
@@ -180,7 +214,6 @@ public:
         Firebase.reconnectWiFi(true);
         Firebase.begin(&_config, &_auth);
 
-        // 🔥 FIX 4: Removed onDisconnect request, falling back to Watchdog.
         if (Firebase.RTDB.beginStream(&_streamFbdo, "/devices/" + _hwid + "/config")) {
             Serial.println("[FIREBASE] 📡 Real-Time Stream connected to /config");
         }
@@ -192,7 +225,6 @@ public:
     void syncFirebase() {
         if (!_firebaseReady || !Firebase.ready()) return;
 
-        // 🔥 FIX 2: Synchronous Polling solves FreeRTOS Lambda Crashes
         if (Firebase.RTDB.readStream(&_streamFbdo)) {
             if (_streamFbdo.streamAvailable()) {
                 handleStreamEvent();
@@ -220,8 +252,6 @@ public:
             sprintf(dateStr, "%04d-%02d-%02d", _hwEngine.snapshot.year, _hwEngine.snapshot.month, _hwEngine.snapshot.day);
 
             String out; serializeJson(doc, out);
-            
-            // 🔥 FIX 3: Wrap strings in FirebaseJson objects so updateNodeSilent accepts them
             FirebaseJson fbSnapshot;
             fbSnapshot.setJsonData(out);
 
@@ -243,8 +273,6 @@ public:
         if (!_shadowInit || isAutonomousChange || needsHeartbeat) {
             String telemetryJson = generateTelemetryJson();
             if (telemetryJson != "") {
-                
-                // 🔥 FIX 3: Wrap strings in FirebaseJson objects
                 FirebaseJson fbTelemetry;
                 fbTelemetry.setJsonData(telemetryJson);
                 
