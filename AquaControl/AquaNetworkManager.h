@@ -2,6 +2,8 @@
 #define AQUA_NETWORK_MANAGER_H
 
 #include <WebServer.h>
+#include <WiFiClientSecure.h>   // 🔥 FIX 1: Restored for OTA Updates
+#include <HTTPUpdate.h>         // 🔥 FIX 1: Restored for OTA Updates
 #include <Firebase_ESP_Client.h>
 #include <addons/TokenHelper.h>
 #include <addons/RTDBHelper.h>
@@ -25,7 +27,7 @@ private:
     TankSettings _shadow; 
     bool _shadowInit = false;
     bool _firebaseReady = false;
-    unsigned long _lastHeartbeat = 0; // 🔥 FIX 2: Re-enabled the Heartbeat Timer
+    unsigned long _lastHeartbeat = 0;
 
     void addCorsHeaders() {
         _server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -106,13 +108,12 @@ private:
         }
     }
 
-    // 🔥 PHASE 4: The WebSocket Listener! This triggers instantly when the Cloud changes.
-    void handleStreamEvent(FirebaseStream data) {
-        if (data.dataTypeEnum() == firebase_rtdb_data_type_json) {
+    // 🔥 FIX 2: Removed lambda callback issues by polling the stream directly
+    void handleStreamEvent() {
+        if (_streamFbdo.dataTypeEnum() == firebase_rtdb_data_type_json) {
             JsonDocument doc;
-            deserializeJson(doc, data.jsonString());
+            deserializeJson(doc, _streamFbdo.jsonString());
 
-            // Check if the Web App sent a system command into the config queue
             if (doc.containsKey("command")) {
                 String cmd = doc["command"].as<String>();
                 Firebase.RTDB.deleteNode(&_fbdo, "/devices/" + _hwid + "/config/command");
@@ -124,12 +125,10 @@ private:
                 }
                 if (cmd == "reboot") { delay(1000); ESP.restart(); }
 
-                // 🔥 THE OTA FIX: Safely grab the parameters and download the bin file!
                 if (cmd == "download_ota") {
                     String targetModel = doc["device_model"].as<String>();
                     String version = doc["version"].as<String>(); 
                     
-                    // Clean up the config queue
                     Firebase.RTDB.deleteNode(&_fbdo, "/devices/" + _hwid + "/config/device_model");
                     Firebase.RTDB.deleteNode(&_fbdo, "/devices/" + _hwid + "/config/version");
                     
@@ -139,7 +138,6 @@ private:
                         otaClient.setInsecure();
                         httpUpdate.rebootOnUpdate(false); 
                         if (httpUpdate.update(otaClient, fullDownloadUrl) == HTTP_UPDATE_OK) {
-                            // Tell the Web App the firmware is ready to install
                             Firebase.RTDB.setBool(&_fbdo, "/devices/" + _hwid + "/telemetry/ota_staged", true);
                         }
                     }
@@ -147,14 +145,12 @@ private:
                 return;
             }
 
-            // 🔥 THE OTA CANCEL FIX: If user clicks cancel, un-stage it from telemetry
             if (doc.containsKey("ota_staged") && doc["ota_staged"].as<bool>() == false) {
                 Firebase.RTDB.deleteNode(&_fbdo, "/devices/" + _hwid + "/config/ota_staged");
                 Firebase.RTDB.setBool(&_fbdo, "/devices/" + _hwid + "/telemetry/ota_staged", false);
                 return;
             }
 
-            // Otherwise, it's a normal settings update
             if (_settingsMgr.updateFromJson(doc.as<JsonObject>())) {
                 if (doc.containsKey("isAutoMode") && doc["isAutoMode"].as<bool>() == true) _hwEngine.forceResumeAuto();
                 if (doc.containsKey("isLightOn")) {
@@ -184,14 +180,9 @@ public:
         Firebase.reconnectWiFi(true);
         Firebase.begin(&_config, &_auth);
 
-        Firebase.RTDB.onDisconnectSet(&_fbdo, "/devices/" + _hwid + "/telemetry/alive", false);
-
+        // 🔥 FIX 4: Removed onDisconnect request, falling back to Watchdog.
         if (Firebase.RTDB.beginStream(&_streamFbdo, "/devices/" + _hwid + "/config")) {
-            Serial.println("[FIREBASE] 📡 Real-Time WebSocket connected to /config");
-            Firebase.RTDB.setStreamCallback(&_streamFbdo,
-                [this](FirebaseStream data) { this->handleStreamEvent(data); },
-                [this](bool timeout) { /* Silent Reconnect */ }
-            );
+            Serial.println("[FIREBASE] 📡 Real-Time Stream connected to /config");
         }
         _firebaseReady = true;
     }
@@ -201,10 +192,16 @@ public:
     void syncFirebase() {
         if (!_firebaseReady || !Firebase.ready()) return;
 
+        // 🔥 FIX 2: Synchronous Polling solves FreeRTOS Lambda Crashes
+        if (Firebase.RTDB.readStream(&_streamFbdo)) {
+            if (_streamFbdo.streamAvailable()) {
+                handleStreamEvent();
+            }
+        }
+
         unsigned long now = millis();
         TankSettings& s = _settingsMgr.get();
         
-        // 🔥 FIX 1: Upload the Midnight Vault to Firebase Analytics Shard!
         if (_hwEngine.snapshot.pending) {
             JsonDocument doc;
             int totalAct = 0, totalAwk = 0;
@@ -223,13 +220,17 @@ public:
             sprintf(dateStr, "%04d-%02d-%02d", _hwEngine.snapshot.year, _hwEngine.snapshot.month, _hwEngine.snapshot.day);
 
             String out; serializeJson(doc, out);
-            if (Firebase.RTDB.updateNodeSilent(&_fbdo, "/devices/" + _hwid + "/analytics/" + String(dateStr), out.c_str())) {
+            
+            // 🔥 FIX 3: Wrap strings in FirebaseJson objects so updateNodeSilent accepts them
+            FirebaseJson fbSnapshot;
+            fbSnapshot.setJsonData(out);
+
+            if (Firebase.RTDB.updateNodeSilent(&_fbdo, "/devices/" + _hwid + "/analytics/" + String(dateStr), &fbSnapshot)) {
                 Serial.println("[FIREBASE] 📈 Successfully pushed Midnight Snapshot to Analytics Vault!");
-                _hwEngine.snapshot.pending = false; // Clear the pending flag only on success
+                _hwEngine.snapshot.pending = false; 
             }
         }
         
-        // 🔥 FIX 2: Re-enabled the 60s Pulse so UI Charts animate smoothly
         bool needsHeartbeat = (now - _lastHeartbeat > 60000);
         
         bool isAutonomousChange = _shadowInit && (
@@ -242,7 +243,12 @@ public:
         if (!_shadowInit || isAutonomousChange || needsHeartbeat) {
             String telemetryJson = generateTelemetryJson();
             if (telemetryJson != "") {
-                if (Firebase.RTDB.updateNodeSilent(&_fbdo, "/devices/" + _hwid + "/telemetry", telemetryJson.c_str())) {
+                
+                // 🔥 FIX 3: Wrap strings in FirebaseJson objects
+                FirebaseJson fbTelemetry;
+                fbTelemetry.setJsonData(telemetryJson);
+                
+                if (Firebase.RTDB.updateNodeSilent(&_fbdo, "/devices/" + _hwid + "/telemetry", &fbTelemetry)) {
                     _shadow = s;
                     _shadowInit = true;
                     _lastHeartbeat = now;
