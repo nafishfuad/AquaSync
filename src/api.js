@@ -1,12 +1,12 @@
 // src/api.js
 
+import { auth } from "./firebase-config.js";
+
 const FIREBASE_URL = "https://aqua-fish-controller-default-rtdb.asia-southeast1.firebasedatabase.app";
 
-// Circuit Breaker State
 let localFailCount = 0;
 let forceCloudUntil = 0;
 
-// 🔥 FIX 1: Relax the timeout to 2500ms so the Web App waits for the ESP32 to finish background SSL tasks
 async function fetchWithTimeout(url, options = {}, timeoutMs = 2500) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -24,26 +24,21 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 2500) {
 
 export const API = {
     async sendCommand(device, commandPayload) {
-        // Stop real network requests for the Demo Device
         if (device.isDummy) {
-            return { 
-                success: true, 
-                source: "cloud", 
-                data: { ...device.metrics, localIP: "127.0.0.1", lastHeartbeatTs: Math.floor(Date.now() / 1000) } 
-            };
+            return { success: true, source: "cloud", data: { ...device.metrics, localIP: "127.0.0.1", lastHeartbeatTs: Math.floor(Date.now() / 1000) } };
         }
 
-        const commandWrapper = { ...commandPayload, timestamp: Math.floor(Date.now() / 1000) };
         const now = Date.now();
+        const commandWrapper = { ...commandPayload, timestamp: Math.floor(now / 1000) };
         let useCloud = false;
-        let localData = null;
         let localSucceeded = false;
 
-        // Circuit breaker checks
-        if (now < forceCloudUntil) useCloud = true;
-        if (!device.localIP || !device.network.isWiFiConnected) useCloud = true;
+        // Circuit breaker: Fall back to cloud if local failed recently
+        if (now < forceCloudUntil || !device.localIP || !device.network.isWiFiConnected) {
+            useCloud = true;
+        }
 
-        // 1. Try Local Hardware First
+        // 1. Try Local Hardware Control API
         if (!useCloud && device.localIP) {
             try {
                 const res = await fetchWithTimeout(`http://${device.localIP}/api/control`, {
@@ -53,50 +48,37 @@ export const API = {
                 });
                 if (res.ok) {
                     localFailCount = 0;
-                    localData = await res.json();
                     localSucceeded = true;
                 }
             } catch (err) {
                 localFailCount++;
                 if (localFailCount >= 2) forceCloudUntil = now + 60000;
-                useCloud = true; // 🔥 CRITICAL: If local fails, immediately engage the Cloud logic below!
+                useCloud = true; 
             }
         }
 
-        // 2. The Cloud Protocol
+        // 2. The Cloud CQRS Protocol (1-Way Intent Routing)
         try {
-            // ALWAYS patch State for instant Web UI Sync across other devices
-            const res = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/state.json`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(commandWrapper)
-            });
-            
-            // 🔥 FIX 2: If Local IP failed or is blacklisted, we MUST push to the 'commands' queue so the hardware sees it!
-            if (useCloud || !localSucceeded) {
-                await fetch(`${FIREBASE_URL}/devices/${device.hwid}/commands.json`, {
+            // Authenticate the push
+            const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
+            const authQuery = token ? `?auth=${token}` : "";
+
+            // 🔥 FIX: We must PATCH the entire object so payloads (like OTA versions) aren't lost!
+            if (commandWrapper.command || useCloud || !localSucceeded) {
+                await fetch(`${FIREBASE_URL}/devices/${device.hwid}/config.json${authQuery}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(commandWrapper)
                 });
             }
             
-            if (res.ok) {
-                return { 
-                    success: true, 
-                    source: localSucceeded ? "local" : "cloud", 
-                    returnedState: localData 
-                };
-            }
+            return { success: true, source: localSucceeded ? "local" : "cloud" };
+
         } catch (err) {
-            console.error("[API] Cloud push failed.");
+            console.error("[API] Cloud push failed.", err);
         }
         
-        // 3. Absolute Fallback
-        if (localSucceeded) {
-            return { success: true, source: "local", returnedState: localData };
-        }
-        return { success: false, source: "none", returnedState: null };
+        return { success: localSucceeded, source: localSucceeded ? "local" : "none" };
     },
 
     async sendWifiProvisioning(ssid, pass, token, deviceName) {
@@ -106,7 +88,6 @@ export const API = {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ssid, pass, token, deviceName }) 
             }, 10000); 
-            
             return response.ok;
         } catch (err) {
             console.warn("[API] Provisioning connection dropped (Likely rebooting).");
@@ -118,11 +99,9 @@ export const API = {
         try {
             const response = await fetch("https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware.json?t=" + Date.now());
             if (!response.ok) return null;
-            
             const data = await response.json();
             return data[model] || null; 
         } catch (err) {
-            console.error("[API] Failed to fetch OTA manifest from GitHub.", err);
             return null;
         }
     }

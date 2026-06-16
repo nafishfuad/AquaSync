@@ -1,12 +1,7 @@
 // src/state.js
 
-// 1. Import ONLY the specific Firebase methods we need to use
-// Add sendEmailVerification to this list!
-// Add sendPasswordResetEmail to this list
 import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendEmailVerification, sendPasswordResetEmail } from "firebase/auth";
-import { ref, onValue, off, set, get } from "firebase/database";
-
-// 2. 🔥 THE CONNECTION: Import the live Auth and DB instances from your central config file
+import { ref, onValue, off, set, get, query, orderByKey, limitToLast } from "firebase/database";
 import { auth, db } from "./firebase-config.js";
 
 function formatTime(minutes) {
@@ -15,7 +10,6 @@ function formatTime(minutes) {
     return `${h}h ${m}m`;
 }
 
-// Safely convert Firebase sparse objects back to true arrays
 function toArray(data, length, defaultVal) {
     if (Array.isArray(data)) return data;
     if (typeof data === "object" && data !== null) {
@@ -30,9 +24,6 @@ function toArray(data, length, defaultVal) {
     return Array(length).fill(defaultVal);
 }
 
-// ==========================================
-// UPDATED: IDENTITY STORE (With Email Verification)
-// ==========================================
 export const IdentityStore = {
     currentUser: null,
     isGuest: true,
@@ -40,28 +31,23 @@ export const IdentityStore = {
     init() {
         onAuthStateChanged(auth, async (user) => {
             if (user) {
-                // 🔥 THE GATEKEEPER: Block unverified users from entering the cloud
                 if (!user.emailVerified) {
                     console.log("🔒 Login blocked: Email not verified.");
-                    signOut(auth); // Kick them back to guest mode
+                    signOut(auth);
                     return; 
                 }
-
                 console.log("🔓 User logged in:", user.email);
                 this.currentUser = user;
                 this.isGuest = false;
                 
-                // Push any local guest tanks to the new cloud account
                 await DeviceStore.syncLocalToCloud();
                 DeviceStore.loadFromCloud(user.uid);
-
                 window.dispatchEvent(new CustomEvent("aquasync_auth_changed", { detail: { isGuest: false, email: user.email } }));
             } else {
                 console.log("👤 Running in Local Guest Mode");
                 this.currentUser = null;
                 this.isGuest = true;
                 DeviceStore.initLocal(); 
-
                 window.dispatchEvent(new CustomEvent("aquasync_auth_changed", { detail: { isGuest: true, email: null } }));
             }
         });
@@ -70,13 +56,10 @@ export const IdentityStore = {
     async login(email, password) {
         try {
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
-            
-            // 🔥 Check if they clicked the email link!
             if (!userCredential.user.emailVerified) {
                 signOut(auth);
                 return { success: false, message: "⚠️ Please check your inbox and verify your email before logging in." };
             }
-            
             return { success: true };
         } catch (error) {
             return { success: false, message: error.message };
@@ -86,28 +69,19 @@ export const IdentityStore = {
     async signup(email, password) {
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            
-            // 🔥 We removed the `set` command here. 
-            // Firebase doesn't need empty folders! It will create it when they add their first tank.
-            
-            // Send the verification email
             await sendEmailVerification(userCredential.user);
-            
-            // Immediately log them out so they can't claim tanks yet
             signOut(auth);
-            
-            // Return a special flag so the UI knows to show a success popup
             return { success: true, requireVerification: true };
         } catch (error) {
             return { success: false, message: error.message };
         }
     },
+
     async resetPassword(email) {
         try {
             await sendPasswordResetEmail(auth, email);
             return { success: true, message: "✅ Password reset email sent! Please check your inbox." };
         } catch (error) {
-            // Make Firebase error messages more user-friendly
             let msg = error.message;
             if (msg.includes("user-not-found") || msg.includes("invalid-credential")) msg = "No account found with this email.";
             if (msg.includes("missing-email")) msg = "Please enter an email address.";
@@ -116,7 +90,6 @@ export const IdentityStore = {
     },
 
     logout() {
-        // 🔥 QA FIX: Sever the live data stream before signing out
         if (DeviceStore._activeStreamRef) {
             off(DeviceStore._activeStreamRef);
             DeviceStore._activeStreamRef = null;
@@ -125,15 +98,11 @@ export const IdentityStore = {
     }
 };
 
-// ==========================================
-// UPDATED: DEVICE STORE
-// ==========================================
 export const DeviceStore = {
     devices: {},
     activeDeviceId: null,
     _activeStreamRef: null,
 
-    // 1. LOCAL LOAD (For Guests)
     initLocal() {
         try {
             const storedData = localStorage.getItem("aquasync_ecosystem");
@@ -141,12 +110,10 @@ export const DeviceStore = {
                 this.devices = JSON.parse(storedData);
                 for (let hwid in this.devices) {
                     let dev = this.devices[hwid];
-                    if (!dev.companion) dev.companion = { current: "v1.0.0", latest: "Checking...", downloadUrl: "" };
-                    if (!dev.firmware) dev.firmware = { current: "v1.0.0", latest: "Checking...", downloadUrl: "" };
+                    if (!dev.historicalData) dev.historicalData = []; 
                 }
             }
         } catch (error) {
-            console.error("Failed to parse device store", error);
             this.devices = {};
         }
 
@@ -156,68 +123,26 @@ export const DeviceStore = {
         } else if (Object.keys(this.devices).length > 0) {
             this.activeDeviceId = Object.keys(this.devices)[0];
         }
-        
-        // Trigger a custom event so your UI knows data is ready to draw
         window.dispatchEvent(new Event("aquasync_data_ready"));
     },
 
-    // 🚀 NEW: The Cloud Streaming Engine
-    startCloudStream(hwid) {
-        if (IdentityStore.isGuest) return; // Guests don't stream from cloud
-        
-        // Close any old connections to prevent memory leaks when switching tanks
-        if (this._activeStreamRef) {
-            off(this._activeStreamRef);
-        }
-
-        // Open a live socket directly to this tank's state
-        this._activeStreamRef = ref(db, `devices/${hwid}/state`);
-        console.log(`📡 [STREAM] Live socket opened for ${hwid}`);
-
-        onValue(this._activeStreamRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                
-                // Update IP if it changed
-                if (data.localIP) this.updateNetwork(hwid, data.localIP, true);
-                
-                // Update memory instantly
-                this.updateDeviceState(hwid, data);
-                
-                // Tell main.js to redraw the screen!
-                window.dispatchEvent(new CustomEvent("aquasync_stream_update"));
-            }
-        });
-    },
-
-    // 🔥 NEW: The Local-to-Cloud Migration Engine
     async syncLocalToCloud() {
-        if (IdentityStore.isGuest) return; // Safety check
-        
-        // Loop through everything currently in memory (which was loaded from localStorage)
+        if (IdentityStore.isGuest) return;
         for (let hwid in this.devices) {
             const dev = this.devices[hwid];
-            console.log(`🚀 Migrating local tank [${dev.name}] to Cloud...`);
-            
-            // We reuse our existing claim function to securely push it to Vault A and Vault B
             await this.claimDevice(hwid, dev.model, dev.name);
         }
     },
 
-    // 2. CLOUD LOAD (For Logged-In Users)
     loadFromCloud(uid) {
         const ecoRef = ref(db, `users/${uid}/ecosystem`);
         onValue(ecoRef, (snapshot) => {
             if (snapshot.exists()) {
                 const ecosystem = snapshot.val();
-                
-                // Merge cloud ecosystem into local state
                 for (let hwid in ecosystem) {
                     if (!this.devices[hwid]) {
-                         // Build the empty shell so the UI doesn't crash while waiting for ESP32 telemetry
                          this.addDeviceLocal(hwid, ecosystem[hwid].model, ecosystem[hwid].name);
                     } else {
-                         // Update name if changed on another device
                          this.devices[hwid].name = ecosystem[hwid].name;
                     }
                 }
@@ -226,21 +151,16 @@ export const DeviceStore = {
                     this.activeDeviceId = Object.keys(this.devices)[0];
                 }
 
-                // 🔥 Trigger the live stream for the currently active tank!
                 if (this.activeDeviceId) {
                     this.startCloudStream(this.activeDeviceId);
                 }
-
-                console.log("☁️ Ecosystem loaded from Cloud");
             } else {
-                console.log("☁️ Ecosystem is empty.");
                 this.devices = {};
             }
             window.dispatchEvent(new Event("aquasync_data_ready"));
         });
     },
 
-    // 3. THE CLAIMING PROTOCOL (Replaces old addDevice)
     async claimDevice(hwid, model, name) {
         if (IdentityStore.isGuest) {
             this.addDeviceLocal(hwid, model, name);
@@ -255,27 +175,17 @@ export const DeviceStore = {
             const currentOwner = snapshot.val();
 
             if (currentOwner === null || currentOwner === uid) {
-                // Device is an orphan, or we already own it. Claim it!
                 await set(ref(db, `devices/${hwid}/ownerUid`), uid);
-                
-                // Add it to the User's Ecosystem (Vault A)
-                await set(ref(db, `users/${uid}/ecosystem/${hwid}`), {
-                    hwid: hwid,
-                    model: model,
-                    name: name
-                });
-                console.log("🎉 Device successfully claimed to your cloud account!");
+                await set(ref(db, `users/${uid}/ecosystem/${hwid}`), { hwid, model, name });
                 return { success: true };
             } else {
-                return { success: false, message: "⚠️ This device is already registered to another account. Please factory reset the physical device first." };
+                return { success: false, message: "⚠️ This device is already registered to another account." };
             }
         } catch (error) {
-            console.error("Claiming error:", error);
             return { success: false, message: "Permission denied or network error." };
         }
     },
 
-    // 4. LOCAL ADDITION (Helper for Building the Object)
     addDeviceLocal(hwid, model, name) {
         if (!this.devices[hwid]) {
             this.devices[hwid] = {
@@ -285,28 +195,14 @@ export const DeviceStore = {
                 localIP: null,
                 network: { isWiFiConnected: false, ssid: "" },
                 metrics: {
-                    isAutoMode: true,
-                    isLightOn: false,
-                    isCO2On: false,
-                    isFanOn: false,
-                    isFanEnabled: false,
-                    currentBrightness: 0,
-                    startTime: "12:00",
-                    photoperiod: 8,
-                    maxBrightness: 100,
-                    isDimmerEnabled: false,
-                    sunriseMins: 30,
-                    sunsetMins: 30,
-                    isCO2ScheduleSeparate: false,
-                    co2OnTime: "11:00",
-                    co2OffTime: "20:00",
-                    recoveryMins: 15,
-                    fanOnTime: "12:00",
-                    fanOffTime: "20:00",
-                    fanSpeed: 50,
-                    colorW: 100, colorR: 100, colorG: 100, colorB: 100
+                    isAutoMode: true, isLightOn: false, isCO2On: false, isFanOn: false, isFanEnabled: false,
+                    currentBrightness: 0, startTime: "12:00", photoperiod: 8, maxBrightness: 100,
+                    isDimmerEnabled: false, sunriseMins: 30, sunsetMins: 30, isCO2ScheduleSeparate: false,
+                    co2OnTime: "11:00", co2OffTime: "20:00", recoveryMins: 15, fanOnTime: "12:00",
+                    fanOffTime: "20:00", fanSpeed: 50, colorW: 100, colorR: 100, colorG: 100, colorB: 100
                 },
                 capabilities: { hasLight: true, hasCO2: true, hasFan: true, hasColorSpectrum: true },
+                historicalData: [], // 🔥 PHASE 4: Stores the raw daily snapshots from Firebase
                 analyticsData: {
                     today: { totalActive: "00h 00m", loadShedding: "00h 00m", hourlyGraph: Array(24).fill(0), awakeData: Array(24).fill(0) },
                     week: { totalActive: "00h 00m", avgLight: "00h 00m", loadShedding: "00h 00m", dailyGraph: Array(7).fill(0) },
@@ -323,29 +219,21 @@ export const DeviceStore = {
         this.save();
     },
 
-    // 5. REMOVE DEVICE (With Cloud Wipe)
     async removeDevice(hwid) {
         if (this.devices[hwid]) {
             delete this.devices[hwid];
-            
             if (this.activeDeviceId === hwid) {
                 const keys = Object.keys(this.devices);
                 this.activeDeviceId = keys.length > 0 ? keys[0] : null;
             }
             this.save();
 
-            // Cloud removal protocol
             if (!IdentityStore.isGuest && IdentityStore.currentUser) {
                 const uid = IdentityStore.currentUser.uid;
                 try {
-                    // 1. Remove from User Ecosystem (Vault A)
                     await set(ref(db, `users/${uid}/ecosystem/${hwid}`), null);
-                    // 2. Remove claim from Device (Vault B) - Make it an orphan again
                     await set(ref(db, `devices/${hwid}/ownerUid`), null);
-                    console.log(`☁️ Device ${hwid} removed from cloud account.`);
-                } catch(e) {
-                    console.error("Failed to remove device from cloud", e);
-                }
+                } catch(e) {}
             }
         }
     },
@@ -354,7 +242,7 @@ export const DeviceStore = {
         if (this.devices[hwid]) {
             this.activeDeviceId = hwid;
             this.save();
-            this.startCloudStream(hwid); // 🔥 Automatically start streaming the new tank!
+            this.startCloudStream(hwid); 
         }
     },
 
@@ -365,83 +253,141 @@ export const DeviceStore = {
         this.save();
     },
 
+    // 🔥 PHASE 4: Fetch historical data once on load, instead of polling the ESP32
+    async fetchHistoricalAnalytics(hwid) {
+        if (IdentityStore.isGuest) return;
+        try {
+            const analyticsRef = query(ref(db, `devices/${hwid}/analytics`), orderByKey(), limitToLast(30));
+            const snapshot = await get(analyticsRef);
+            const history = [];
+            
+            if (snapshot.exists()) {
+                snapshot.forEach(child => {
+                    history.push({ date: child.key, ...child.val() });
+                });
+            }
+            
+            if (this.devices[hwid]) {
+                this.devices[hwid].historicalData = history;
+                this.recalculateAnalytics(hwid);
+            }
+        } catch (error) {
+            console.error("Failed to load historical analytics:", error);
+        }
+    },
+
+    // 🔥 PHASE 4: Listens to the telemetry shard (not state)
+    startCloudStream(hwid) {
+        if (IdentityStore.isGuest) return; 
+        
+        if (this._activeStreamRef) {
+            off(this._activeStreamRef);
+        }
+
+        // Fetch the 30-day history in the background when the socket opens
+        this.fetchHistoricalAnalytics(hwid);
+
+        this._activeStreamRef = ref(db, `devices/${hwid}/telemetry`);
+        console.log(`📡 [STREAM] Live socket opened for ${hwid}/telemetry`);
+
+        onValue(this._activeStreamRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                if (data.localIP) this.updateNetwork(hwid, data.localIP, true);
+                
+                // Fetch the config to merge user intent with hardware reality
+                get(ref(db, `devices/${hwid}/config`)).then((configSnap) => {
+                    const configData = configSnap.exists() ? configSnap.val() : {};
+                    // Overlay telemetry (hardware truth) over config (user intent)
+                    this.updateDeviceState(hwid, { ...configData, ...data });
+                    window.dispatchEvent(new CustomEvent("aquasync_stream_update"));
+                });
+            }
+        });
+    },
+
+    // 🔥 PHASE 4: Client-Side Number Crunching
+    recalculateAnalytics(hwid) {
+        const dev = this.devices[hwid];
+        if (!dev) return;
+
+        const m = dev.metrics;
+        const history = dev.historicalData || [];
+        
+        // 1. Calculate Today's Live Graph
+        const h = toArray(m.hourlyData, 24, 0);
+        const awake = toArray(m.awakeData, 24, 1);
+        let todayTotal = m.liveActiveMins || 0;
+        
+        const lightOutageMins = m.lightLoadSheddingToday || 0;
+        const totalOutageMins = m.totalLoadSheddingToday || 0;
+
+        // 2. Build Continuous 30-Day and 7-Day Arrays
+        const last30Graph = [];
+        let monthTotalMins = todayTotal;
+        let monthValidDays = 1;
+        
+        const last7Graph = [];
+        let weekTotalMins = todayTotal;
+        let weekValidDays = 1;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (let i = 1; i <= 30; i++) {
+            const targetDate = new Date(today);
+            targetDate.setDate(today.getDate() - i);
+            const dateStr = targetDate.toISOString().split('T')[0];
+
+            // Find if Firebase has data for this exact date
+            const historicDay = history.find(entry => entry.date === dateStr);
+            const activeMins = historicDay ? (historicDay.totalActiveMins || 0) : 0;
+
+            last30Graph.unshift(+(activeMins / 60).toFixed(1));
+            monthTotalMins += activeMins;
+            if (activeMins > 0) monthValidDays++;
+
+            if (i <= 7) {
+                last7Graph.unshift(+(activeMins / 60).toFixed(1));
+                weekTotalMins += activeMins;
+                if (activeMins > 0) weekValidDays++;
+            }
+        }
+
+        // Add today to the end of the graphs
+        last30Graph.push(+(todayTotal / 60).toFixed(1));
+        last7Graph.push(+(todayTotal / 60).toFixed(1));
+
+        dev.analyticsData = {
+            today: { 
+                totalActive: formatTime(todayTotal), 
+                loadShedding: formatTime(lightOutageMins), 
+                totalBlackout: formatTime(totalOutageMins),
+                hourlyGraph: h,
+                awakeData: awake 
+            },
+            week: { 
+                totalActive: formatTime(weekTotalMins), 
+                avgLight: formatTime(Math.round(weekTotalMins / weekValidDays)), 
+                loadShedding: formatTime(lightOutageMins), 
+                dailyGraph: last7Graph 
+            },
+            month: { 
+                totalActive: formatTime(monthTotalMins), 
+                avgLight: formatTime(Math.round(monthTotalMins / monthValidDays)), 
+                loadShedding: formatTime(lightOutageMins), 
+                totalBlackout: formatTime(totalOutageMins),
+                dailyGraph: last30Graph
+            }
+        };
+    },
+
     updateDeviceState(hwid, newMetrics, newCapabilities) {
         if (!this.devices[hwid]) return;
 
         if (newMetrics) {
             this.devices[hwid].metrics = { ...this.devices[hwid].metrics, ...newMetrics };
-
-            // Parse deep Analytics if supplied
-            if (newMetrics.hourlyData || newMetrics.dailyData) {
-                const h = toArray(newMetrics.hourlyData, 24, 0);
-                const d = toArray(newMetrics.dailyData, 30, 0);
-                const awake = toArray(newMetrics.awakeData, 24, 1);
-
-                let sumOfFirebaseHours = 0;
-                for (let i = 0; i < 24; i++) {
-                    if (h[i] > 60) h[i] = 60;
-                    sumOfFirebaseHours += h[i];
-                }
-
-                let todayTotal = sumOfFirebaseHours;
-                const currentHour = new Date().getHours();
-
-                if (newMetrics.liveActiveMins !== undefined && newMetrics.liveActiveMins > sumOfFirebaseHours) {
-                    const unpushedMinutes = newMetrics.liveActiveMins - sumOfFirebaseHours;
-                    h[currentHour] += unpushedMinutes;
-                    if (h[currentHour] > 60) h[currentHour] = 60; 
-                    todayTotal = newMetrics.liveActiveMins;
-                }
-
-                d[0] = Math.max(d[0] || 0, todayTotal);
-
-                let weekTotal = 0;
-                const weekGraphData = [];
-                let weekDivisor = 0;
-                for (let i = 0; i < 7; i++) {
-                    const val = d[i] || 0;
-                    weekTotal += val;
-                    if (val > 0) weekDivisor++;
-                    weekGraphData.unshift(+(val / 60).toFixed(1));
-                }
-                if (weekDivisor === 0) weekDivisor = 1;
-
-                let monthTotal = 0;
-                const monthGraphData = [];
-                let monthDivisor = 0;
-                for (let i = 0; i < 30; i++) {
-                    const val = d[i] || 0;
-                    monthTotal += val;
-                    if (val > 0) monthDivisor++;
-                    monthGraphData.unshift(+(val / 60).toFixed(1));
-                }
-                if (monthDivisor === 0) monthDivisor = 1;
-
-                const lightOutageMins = newMetrics.lightLoadSheddingToday || 0;
-                const totalOutageMins = newMetrics.totalLoadSheddingToday || 0;
-
-                this.devices[hwid].analyticsData = {
-                    today: { 
-                        totalActive: formatTime(todayTotal), 
-                        loadShedding: formatTime(lightOutageMins), 
-                        hourlyGraph: h,
-                        awakeData: awake 
-                    },
-                    week: { 
-                        totalActive: formatTime(weekTotal), 
-                        avgLight: formatTime(Math.round(weekTotal / weekDivisor)), 
-                        loadShedding: formatTime(lightOutageMins), 
-                        dailyGraph: weekGraphData 
-                    },
-                    month: { 
-                        totalActive: formatTime(monthTotal), 
-                        avgLight: formatTime(Math.round(monthTotal / monthDivisor)), 
-                        loadShedding: formatTime(lightOutageMins), 
-                        totalBlackout: formatTime(totalOutageMins),
-                        dailyGraph: monthGraphData
-                    }
-                };
-            }
+            this.recalculateAnalytics(hwid);
         }
         
         if (newCapabilities) {
@@ -460,8 +406,11 @@ export const DeviceStore = {
 
     save() {
         try {
-            // We always save to localStorage as a fallback/cache
-            localStorage.setItem("aquasync_ecosystem", JSON.stringify(this.devices));
+            // Drop historical data before saving to localStorage to save space
+            const clone = JSON.parse(JSON.stringify(this.devices));
+            for (let id in clone) clone[id].historicalData = [];
+            localStorage.setItem("aquasync_ecosystem", JSON.stringify(clone));
+            
             if (this.activeDeviceId) {
                 localStorage.setItem("aquasync_active_hwid", this.activeDeviceId);
             } else {

@@ -2,9 +2,9 @@
 #define AQUA_NETWORK_MANAGER_H
 
 #include <WebServer.h>
-#include <HTTPClient.h>
-#include <WiFiClientSecure.h>
-#include <HTTPUpdate.h> 
+#include <Firebase_ESP_Client.h>
+#include <addons/TokenHelper.h>
+#include <addons/RTDBHelper.h>
 #include <Preferences.h>
 #include "CoreConfig.h"
 #include "SettingsManager.h"
@@ -17,25 +17,15 @@ private:
     HardwareEngine& _hwEngine; 
     String _hwid;
     
+    FirebaseData _fbdo;
+    FirebaseData _streamFbdo;
+    FirebaseAuth _auth;
+    FirebaseConfig _config;
+
     TankSettings _shadow; 
     bool _shadowInit = false;
-
-    unsigned long _lastFirebasePull = -15000; 
-    unsigned long _lastHeartbeat = 0;
-    unsigned long _lastAnalyticsPush = 0;
-    unsigned long _lastCommandReceivedTime = 0;
-    
-    bool _hasFetchedInitialConfig = false;
-    int _lastPushedDayOfYear = -1;
-
-    String getLogTime() {
-        time_t now = time(nullptr);
-        struct tm* timeinfo = localtime(&now);
-        if (timeinfo->tm_year < 120) return String(millis() / 1000) + "s";
-        char buf[10];
-        sprintf(buf, "%02d:%02d:%02d", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
-        return String(buf);
-    }
+    bool _firebaseReady = false;
+    unsigned long _lastHeartbeat = 0; // 🔥 FIX 2: Re-enabled the Heartbeat Timer
 
     void addCorsHeaders() {
         _server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -48,86 +38,30 @@ private:
         _server.send(204, "text/plain", "");
     }
     
-    String generateDeltaStateJson() {
+    String generateTelemetryJson() {
         JsonDocument doc;
         TankSettings& s = _settingsMgr.get();
-        int changes = 0;
 
-        if (!_shadowInit) {
-            doc["v"] = CURRENT_SCHEMA_VERSION;
-            doc["localIP"] = WiFi.localIP().toString();
-            doc["fw_version"] = FW_VERSION;
-            doc["ota_staged"] = false;
-            changes++;
-        }
-
-        if (!_shadowInit || s.isAutoMode != _shadow.isAutoMode) { doc["isAutoMode"] = s.isAutoMode; _shadow.isAutoMode = s.isAutoMode; changes++; }
-        if (!_shadowInit || s.isLightOn != _shadow.isLightOn) { doc["isLightOn"] = s.isLightOn; _shadow.isLightOn = s.isLightOn; changes++; }
-        if (!_shadowInit || s.isCO2On != _shadow.isCO2On) { doc["isCO2On"] = s.isCO2On; _shadow.isCO2On = s.isCO2On; changes++; }
-        if (!_shadowInit || s.isFanOn != _shadow.isFanOn) { doc["isFanOn"] = s.isFanOn; _shadow.isFanOn = s.isFanOn; changes++; }
-        if (!_shadowInit || s.isFanEnabled != _shadow.isFanEnabled) { doc["isFanEnabled"] = s.isFanEnabled; _shadow.isFanEnabled = s.isFanEnabled; changes++; }
-        if (!_shadowInit || s.currentBrightness != _shadow.currentBrightness) { doc["currentBrightness"] = s.currentBrightness; _shadow.currentBrightness = s.currentBrightness; changes++; }
-        if (!_shadowInit || s.photoperiod != _shadow.photoperiod) { doc["photoperiod"] = s.photoperiod; _shadow.photoperiod = s.photoperiod; changes++; }
-        if (!_shadowInit || s.maxBrightness != _shadow.maxBrightness) { doc["maxBrightness"] = s.maxBrightness; _shadow.maxBrightness = s.maxBrightness; changes++; }
-        if (!_shadowInit || s.isDimmerEnabled != _shadow.isDimmerEnabled) { doc["isDimmerEnabled"] = s.isDimmerEnabled; _shadow.isDimmerEnabled = s.isDimmerEnabled; changes++; }
-        if (!_shadowInit || s.sunriseMins != _shadow.sunriseMins) { doc["sunriseMins"] = s.sunriseMins; _shadow.sunriseMins = s.sunriseMins; changes++; }
-        if (!_shadowInit || s.sunsetMins != _shadow.sunsetMins) { doc["sunsetMins"] = s.sunsetMins; _shadow.sunsetMins = s.sunsetMins; changes++; }
-        if (!_shadowInit || s.isCO2ScheduleSeparate != _shadow.isCO2ScheduleSeparate) { doc["isCO2ScheduleSeparate"] = s.isCO2ScheduleSeparate; _shadow.isCO2ScheduleSeparate = s.isCO2ScheduleSeparate; changes++; }
-        if (!_shadowInit || s.recoveryMins != _shadow.recoveryMins) { doc["recoveryMins"] = s.recoveryMins; _shadow.recoveryMins = s.recoveryMins; changes++; }
-        if (!_shadowInit || s.fanSpeed != _shadow.fanSpeed) { doc["fanSpeed"] = s.fanSpeed; _shadow.fanSpeed = s.fanSpeed; changes++; }
-        if (!_shadowInit || s.totalLoadSheddingToday != _shadow.totalLoadSheddingToday) { doc["totalLoadSheddingToday"] = s.totalLoadSheddingToday; _shadow.totalLoadSheddingToday = s.totalLoadSheddingToday; changes++; }
-        if (!_shadowInit || s.lightLoadSheddingToday != _shadow.lightLoadSheddingToday) { doc["lightLoadSheddingToday"] = s.lightLoadSheddingToday; _shadow.lightLoadSheddingToday = s.lightLoadSheddingToday; changes++; }
-
-        if (!_shadowInit || String(s.deviceName) != String(_shadow.deviceName)) { doc["deviceName"] = s.deviceName; strlcpy(_shadow.deviceName, s.deviceName, sizeof(_shadow.deviceName)); changes++; }
-        if (!_shadowInit || String(s.startTime) != String(_shadow.startTime)) { doc["startTime"] = s.startTime; strlcpy(_shadow.startTime, s.startTime, sizeof(_shadow.startTime)); changes++; }
-        if (!_shadowInit || String(s.co2OnTime) != String(_shadow.co2OnTime)) { doc["co2OnTime"] = s.co2OnTime; strlcpy(_shadow.co2OnTime, s.co2OnTime, sizeof(_shadow.co2OnTime)); changes++; }
-        if (!_shadowInit || String(s.co2OffTime) != String(_shadow.co2OffTime)) { doc["co2OffTime"] = s.co2OffTime; strlcpy(_shadow.co2OffTime, s.co2OffTime, sizeof(_shadow.co2OffTime)); changes++; }
-        if (!_shadowInit || String(s.fanOnTime) != String(_shadow.fanOnTime)) { doc["fanOnTime"] = s.fanOnTime; strlcpy(_shadow.fanOnTime, s.fanOnTime, sizeof(_shadow.fanOnTime)); changes++; }
-        if (!_shadowInit || String(s.fanOffTime) != String(_shadow.fanOffTime)) { doc["fanOffTime"] = s.fanOffTime; strlcpy(_shadow.fanOffTime, s.fanOffTime, sizeof(_shadow.fanOffTime)); changes++; }
-
-        for(int i=0; i<24; i++) {
-            if (!_shadowInit || s.activeMinutesToday[i] != _shadow.activeMinutesToday[i]) {
-                doc["hourlyData/" + String(i)] = s.activeMinutesToday[i];
-                _shadow.activeMinutesToday[i] = s.activeMinutesToday[i];
-                changes++;
-            }
-            if (!_shadowInit || s.awakeMinutesToday[i] != _shadow.awakeMinutesToday[i]) {
-                doc["awakeData/" + String(i)] = s.awakeMinutesToday[i];
-                _shadow.awakeMinutesToday[i] = s.awakeMinutesToday[i];
-                changes++;
-            }
-        }
-        for(int i=0; i<30; i++) {
-            if (!_shadowInit || s.activeMinutesHistory[i] != _shadow.activeMinutesHistory[i]) {
-                doc["dailyData/" + String(i)] = s.activeMinutesHistory[i];
-                _shadow.activeMinutesHistory[i] = s.activeMinutesHistory[i];
-                changes++;
-            }
-            if (!_shadowInit || s.awakeMinutesHistory[i] != _shadow.awakeMinutesHistory[i]) {
-                doc["dailyAwakeData/" + String(i)] = s.awakeMinutesHistory[i];
-                _shadow.awakeMinutesHistory[i] = s.awakeMinutesHistory[i];
-                changes++;
-            }
-        }
-
-        if (changes == 0 && _shadowInit) return ""; 
-
-        _shadowInit = true;
-        String out;
-        serializeJson(doc, out);
-        return out;
-    }
-
-    String generateHeartbeatJson() {
-        JsonDocument doc;
-        TankSettings& s = _settingsMgr.get(); 
-        
-        doc["lastHeartbeatTs"] = time(nullptr);
+        doc["v"] = CURRENT_SCHEMA_VERSION;
+        doc["localIP"] = WiFi.localIP().toString();
+        doc["fw_version"] = FW_VERSION;
         doc["alive"] = true;
+        doc["lastHeartbeatTs"] = time(nullptr);
+        doc["isLightOn"] = s.isLightOn;
+        doc["isCO2On"] = s.isCO2On;
+        doc["isFanOn"] = s.isFanOn;
+        doc["currentBrightness"] = s.currentBrightness;
 
         int liveMins = 0;
-        for(int i=0; i<24; i++) liveMins += s.activeMinutesToday[i];
+        for(int i=0; i<24; i++) {
+            liveMins += s.activeMinutesToday[i];
+            doc["hourlyData/" + String(i)] = s.activeMinutesToday[i];
+            doc["awakeData/" + String(i)] = s.awakeMinutesToday[i];
+        }
+        
         doc["liveActiveMins"] = liveMins;
+        doc["totalLoadSheddingToday"] = s.totalLoadSheddingToday;
+        doc["lightLoadSheddingToday"] = s.lightLoadSheddingToday;
 
         String out;
         serializeJson(doc, out);
@@ -142,10 +76,6 @@ private:
         capabilities["hasFan"] = true; capabilities["hasColorSpectrum"] = true; 
         doc["hw_id"] = _hwid; doc["model"] = DEVICE_MODEL;
         doc["fw_version"] = FW_VERSION; doc["schema_version"] = CURRENT_SCHEMA_VERSION;
-        TankSettings& s = _settingsMgr.get();
-        doc["deviceName"] = s.deviceName; doc["isAutoMode"] = s.isAutoMode;
-        doc["currentBrightness"] = s.currentBrightness; doc["isLightOn"] = s.isLightOn;
-        doc["isCO2On"] = s.isCO2On; doc["isFanOn"] = s.isFanOn; doc["isFanEnabled"] = s.isFanEnabled;
         String out; serializeJson(doc, out);
         _server.send(200, "application/json", out);
     }
@@ -158,80 +88,85 @@ private:
         JsonDocument doc;
         if (deserializeJson(doc, rawPayload)) { _server.send(400, "application/json", "{\"error\":\"Malformed JSON\"}"); return; }
 
-        if (doc.containsKey("command")) {
-            String cmd = doc["command"].as<String>();
-            _server.send(200, "application/json", "{\"status\":\"executing\"}");
-            delay(500);
-            
-            if (cmd == "factory_reset" || cmd == "forget_wifi") {
-                Preferences p;
-                p.begin("aqua-ctrl", false); p.clear(); p.end();
-                p.begin("aqua-tracker", false); p.clear(); p.end();
-                WiFi.disconnect(true, true);
-                delay(500);
-                ESP.restart();
-            }
-            if (cmd == "reboot") {
-                delay(1000);
-                ESP.restart();
-            }
-            return;
-        }
-
-        // 🔥 THE FIX: Apply Manual Overrides when the Web App sends a command!
         if (_settingsMgr.updateFromJson(doc.as<JsonObject>())) {
-            
-            // 🔥 THE FIX: If "Resume Auto" is clicked, clear all overrides!
-            if (doc.containsKey("isAutoMode") && doc["isAutoMode"].as<bool>() == true) {
-                _hwEngine.forceResumeAuto();
-            }
-
+            if (doc.containsKey("isAutoMode") && doc["isAutoMode"].as<bool>() == true) _hwEngine.forceResumeAuto();
             if (doc.containsKey("isLightOn")) {
                 bool turnedOn = doc["isLightOn"].as<bool>();
                 _hwEngine.applyManualOverride("LIGHT", turnedOn);
-                // Safe default: if turned on but brightness is 0, bump it up
-                if (turnedOn && _settingsMgr.get().currentBrightness == 0) {
-                    _settingsMgr.get().currentBrightness = _settingsMgr.get().maxBrightness;
-                }
+                if (turnedOn && _settingsMgr.get().currentBrightness == 0) _settingsMgr.get().currentBrightness = _settingsMgr.get().maxBrightness;
             }
             if (doc.containsKey("currentBrightness")) _hwEngine.applyManualOverride("LIGHT", true);
             if (doc.containsKey("isCO2On")) _hwEngine.applyManualOverride("CO2", doc["isCO2On"].as<bool>());
             if (doc.containsKey("isFanOn")) _hwEngine.applyManualOverride("FAN", doc["isFanOn"].as<bool>());
 
             _hwEngine.execute(_settingsMgr.get(), true, false);
-            _lastCommandReceivedTime = millis();
             _server.send(200, "application/json", "{\"status\":\"success\"}"); 
         } else {
             _server.send(400, "application/json", "{\"status\":\"rejected_version\"}");
         }
     }
 
-    void handleHandshake() {
-        addCorsHeaders();
-        JsonDocument doc;
-        doc["hw_id"] = _hwid; 
-        doc["session_token"] = "AQUA_SECURE_123"; 
-        doc["model"] = DEVICE_MODEL; 
-        
-        String out; serializeJson(doc, out);
-        _server.send(200, "application/json", out);
-    }
+    // 🔥 PHASE 4: The WebSocket Listener! This triggers instantly when the Cloud changes.
+    void handleStreamEvent(FirebaseStream data) {
+        if (data.dataTypeEnum() == firebase_rtdb_data_type_json) {
+            JsonDocument doc;
+            deserializeJson(doc, data.jsonString());
 
-    void handleWifiProvisioning() {
-        addCorsHeaders();
-        if (_server.method() == HTTP_OPTIONS) { _server.send(204, "text/plain", ""); return; }
-        if (!_server.hasArg("plain")) return;
-        JsonDocument doc; if (deserializeJson(doc, _server.arg("plain"))) return;
+            // Check if the Web App sent a system command into the config queue
+            if (doc.containsKey("command")) {
+                String cmd = doc["command"].as<String>();
+                Firebase.RTDB.deleteNode(&_fbdo, "/devices/" + _hwid + "/config/command");
 
-        Preferences prefs;
-        prefs.begin("aqua-ctrl", false);
-        prefs.putString("ssid", doc["ssid"].as<String>());
-        prefs.putString("pass", doc["pass"].as<String>());
-        if (doc.containsKey("deviceName")) prefs.putString("devName", doc["deviceName"].as<String>());
-        prefs.end();
+                if (cmd == "factory_reset") {
+                    Preferences p; p.begin("aqua-ctrl", false); p.clear(); p.end();
+                    p.begin("aqua-tracker", false); p.clear(); p.end();
+                    WiFi.disconnect(true, true); delay(500); ESP.restart();
+                }
+                if (cmd == "reboot") { delay(1000); ESP.restart(); }
 
-        _server.send(200, "application/json", "{\"status\":\"rebooting\"}");
-        delay(500); WiFi.disconnect(true, true); delay(500); ESP.restart();
+                // 🔥 THE OTA FIX: Safely grab the parameters and download the bin file!
+                if (cmd == "download_ota") {
+                    String targetModel = doc["device_model"].as<String>();
+                    String version = doc["version"].as<String>(); 
+                    
+                    // Clean up the config queue
+                    Firebase.RTDB.deleteNode(&_fbdo, "/devices/" + _hwid + "/config/device_model");
+                    Firebase.RTDB.deleteNode(&_fbdo, "/devices/" + _hwid + "/config/version");
+                    
+                    if (targetModel == DEVICE_MODEL) {
+                        String fullDownloadUrl = "https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware/" + targetModel + "_" + version + ".bin";
+                        WiFiClientSecure otaClient;
+                        otaClient.setInsecure();
+                        httpUpdate.rebootOnUpdate(false); 
+                        if (httpUpdate.update(otaClient, fullDownloadUrl) == HTTP_UPDATE_OK) {
+                            // Tell the Web App the firmware is ready to install
+                            Firebase.RTDB.setBool(&_fbdo, "/devices/" + _hwid + "/telemetry/ota_staged", true);
+                        }
+                    }
+                }
+                return;
+            }
+
+            // 🔥 THE OTA CANCEL FIX: If user clicks cancel, un-stage it from telemetry
+            if (doc.containsKey("ota_staged") && doc["ota_staged"].as<bool>() == false) {
+                Firebase.RTDB.deleteNode(&_fbdo, "/devices/" + _hwid + "/config/ota_staged");
+                Firebase.RTDB.setBool(&_fbdo, "/devices/" + _hwid + "/telemetry/ota_staged", false);
+                return;
+            }
+
+            // Otherwise, it's a normal settings update
+            if (_settingsMgr.updateFromJson(doc.as<JsonObject>())) {
+                if (doc.containsKey("isAutoMode") && doc["isAutoMode"].as<bool>() == true) _hwEngine.forceResumeAuto();
+                if (doc.containsKey("isLightOn")) {
+                    bool turnedOn = doc["isLightOn"].as<bool>();
+                    _hwEngine.applyManualOverride("LIGHT", turnedOn);
+                    if (turnedOn && _settingsMgr.get().currentBrightness == 0) _settingsMgr.get().currentBrightness = _settingsMgr.get().maxBrightness;
+                }
+                if (doc.containsKey("currentBrightness")) _hwEngine.applyManualOverride("LIGHT", true);
+                if (doc.containsKey("isCO2On")) _hwEngine.applyManualOverride("CO2", doc["isCO2On"].as<bool>());
+                if (doc.containsKey("isFanOn")) _hwEngine.applyManualOverride("FAN", doc["isFanOn"].as<bool>());
+            }
+        }
     }
 
 public:
@@ -242,27 +177,61 @@ public:
         _server.on("/info", HTTP_GET, [this]() { handleInfo(); });
         _server.on("/api/control", HTTP_POST, [this]() { handleControl(); });
         _server.on("/api/control", HTTP_OPTIONS, [this]() { handlePreflight(); }); 
-        _server.on("/api/handshake", HTTP_GET, [this]() { handleHandshake(); });
-        _server.on("/wifi", HTTP_POST, [this]() { handleWifiProvisioning(); });
-        _server.on("/wifi", HTTP_OPTIONS, [this]() { handleWifiProvisioning(); });
         _server.begin();
+
+        _config.database_url = FIREBASE_URL;
+        _config.signer.test_mode = true; 
+        Firebase.reconnectWiFi(true);
+        Firebase.begin(&_config, &_auth);
+
+        Firebase.RTDB.onDisconnectSet(&_fbdo, "/devices/" + _hwid + "/telemetry/alive", false);
+
+        if (Firebase.RTDB.beginStream(&_streamFbdo, "/devices/" + _hwid + "/config")) {
+            Serial.println("[FIREBASE] 📡 Real-Time WebSocket connected to /config");
+            Firebase.RTDB.setStreamCallback(&_streamFbdo,
+                [this](FirebaseStream data) { this->handleStreamEvent(data); },
+                [this](bool timeout) { /* Silent Reconnect */ }
+            );
+        }
+        _firebaseReady = true;
     }
 
     void handleClient() { _server.handleClient(); }
 
     void syncFirebase() {
+        if (!_firebaseReady || !Firebase.ready()) return;
+
         unsigned long now = millis();
-        if (WiFi.status() != WL_CONNECTED) return;
-
-        // 🔥 THE FIX: The "Gatekeeper". Instantly calculate if we need the cloud.
-        bool needsInitial = !_hasFetchedInitialConfig;
-        bool needsPull = (now - _lastFirebasePull > 15000);
-        bool needsHeartbeat = (now - _lastHeartbeat > 60000);
-
-        bool isDebouncedPush = (_settingsMgr.needsFirebaseSync() && (now - _lastCommandReceivedTime > 5000));
-        bool isHourlyPush = (now - _lastAnalyticsPush > 3600000);
-
         TankSettings& s = _settingsMgr.get();
+        
+        // 🔥 FIX 1: Upload the Midnight Vault to Firebase Analytics Shard!
+        if (_hwEngine.snapshot.pending) {
+            JsonDocument doc;
+            int totalAct = 0, totalAwk = 0;
+            for(int i=0; i<24; i++) {
+                doc["hourlyData/" + String(i)] = _hwEngine.snapshot.activeMinutes[i];
+                doc["awakeData/" + String(i)] = _hwEngine.snapshot.awakeMinutes[i];
+                totalAct += _hwEngine.snapshot.activeMinutes[i];
+                totalAwk += _hwEngine.snapshot.awakeMinutes[i];
+            }
+            doc["totalActiveMins"] = totalAct;
+            doc["totalAwakeMins"] = totalAwk;
+            doc["totalLoadShedding"] = _hwEngine.snapshot.totalLS;
+            doc["lightLoadShedding"] = _hwEngine.snapshot.lightLS;
+
+            char dateStr[16];
+            sprintf(dateStr, "%04d-%02d-%02d", _hwEngine.snapshot.year, _hwEngine.snapshot.month, _hwEngine.snapshot.day);
+
+            String out; serializeJson(doc, out);
+            if (Firebase.RTDB.updateNodeSilent(&_fbdo, "/devices/" + _hwid + "/analytics/" + String(dateStr), out.c_str())) {
+                Serial.println("[FIREBASE] 📈 Successfully pushed Midnight Snapshot to Analytics Vault!");
+                _hwEngine.snapshot.pending = false; // Clear the pending flag only on success
+            }
+        }
+        
+        // 🔥 FIX 2: Re-enabled the 60s Pulse so UI Charts animate smoothly
+        bool needsHeartbeat = (now - _lastHeartbeat > 60000);
+        
         bool isAutonomousChange = _shadowInit && (
             s.isLightOn != _shadow.isLightOn ||
             s.isCO2On != _shadow.isCO2On ||
@@ -270,196 +239,14 @@ public:
             s.currentBrightness != _shadow.currentBrightness
         );
 
-        // Slow checks (NVS Flash Memory & Time conversions) are rate-limited to once every 10 seconds.
-        static unsigned long lastSlowChecks = 0;
-        bool needsNvsCheck = false;
-        bool isRolloverPush = false;
-
-        if (now - lastSlowChecks > 10000) {
-            needsNvsCheck = true;
-            time_t nowTime = time(nullptr);
-            struct tm* timeinfo = localtime(&nowTime);
-            if (timeinfo->tm_year >= 120) {
-                int currentDayOfYear = timeinfo->tm_yday;
-                if (_lastPushedDayOfYear != -1 && currentDayOfYear != _lastPushedDayOfYear) {
-                    isRolloverPush = true; 
+        if (!_shadowInit || isAutonomousChange || needsHeartbeat) {
+            String telemetryJson = generateTelemetryJson();
+            if (telemetryJson != "") {
+                if (Firebase.RTDB.updateNodeSilent(&_fbdo, "/devices/" + _hwid + "/telemetry", telemetryJson.c_str())) {
+                    _shadow = s;
+                    _shadowInit = true;
+                    _lastHeartbeat = now;
                 }
-                _lastPushedDayOfYear = currentDayOfYear;
-            }
-        }
-
-        // 🚀 EARLY EXIT: If nothing needs to happen, exit in 0.001ms. Save the CPU!
-        if (!needsInitial && !needsPull && !needsHeartbeat && !isDebouncedPush && !isHourlyPush && !isAutonomousChange && !isRolloverPush && !needsNvsCheck) {
-            return; 
-        }
-
-        // ==========================================
-        // 🌐 IF WE REACH HERE, NETWORK OR FLASH IS NEEDED
-        // ==========================================
-        
-        // NOW it is safe to instantiate the heavy SSL wrappers!
-        WiFiClientSecure client;
-        client.setInsecure();
-        HTTPClient http;
-
-        // 1. Cloud Override Check (Now runs every 10s, not 50ms)
-        if (needsNvsCheck) {
-            lastSlowChecks = now; 
-            Preferences p;
-            p.begin("aqua-ctrl", false);
-            if (p.getBool("nuke_cloud", false)) {
-                Serial.println("[SEC] 🚨 Executing Cloud Override Sever Command...");
-                http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/ownerUid.json");
-                int response = http.sendRequest("DELETE");
-                if (response == 200) {
-                    Serial.println("[SEC] ✅ Cloud Lock severed. Device is now an Orphan.");
-                    p.putBool("nuke_cloud", false); 
-                }
-                http.end();
-                p.end();
-                return; // Skip normal syncing for this tick
-            }
-            p.end();
-        }
-
-        // 2. Initial Config Fetch
-        if (needsInitial) {
-            bool offlineChangesExist = _settingsMgr.needsFirebaseSync();
-            http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
-            
-            if (http.GET() == 200) {
-                if (!offlineChangesExist) {
-                    JsonDocument doc;
-                    deserializeJson(doc, http.getString());
-                    _settingsMgr.updateFromJson(doc.as<JsonObject>());
-                    _settingsMgr.clearFirebaseSync(); 
-                }
-            }
-            http.end();
-            _hasFetchedInitialConfig = true;
-            _shadowInit = false; 
-        }
-
-        // 3. Command Pull (Every 15s)
-        if (needsPull) {
-            _lastFirebasePull = now;
-            String cmdUrl = FIREBASE_URL + "/devices/" + _hwid + "/commands.json";
-            http.begin(client, cmdUrl);
-            
-            if (http.GET() == 200) {
-                String cmdPayload = http.getString();
-                if (cmdPayload != "null" && cmdPayload != "") {
-                    JsonDocument cmdDoc;
-                    if (!deserializeJson(cmdDoc, cmdPayload)) {
-                        
-                        if (cmdDoc.containsKey("ota_staged") && cmdDoc["ota_staged"].as<bool>() == false) {
-                            http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
-                            http.addHeader("Content-Type", "application/json");
-                            http.PATCH("{\"ota_staged\": false}");
-                            http.end();
-                        }
-
-                        if (cmdDoc.containsKey("command")) {
-                            String cmd = cmdDoc["command"].as<String>();
-                            http.end(); 
-                            
-                            http.begin(client, cmdUrl);
-                            http.sendRequest("DELETE");
-                            http.end();
-
-                            if (cmd == "factory_reset" || cmd == "forget_wifi") {
-                                Preferences p;
-                                p.begin("aqua-ctrl", false); p.clear(); p.end();
-                                p.begin("aqua-tracker", false); p.clear(); p.end();
-                                WiFi.disconnect(true, true);
-                                delay(500);
-                                ESP.restart();
-                            }
-                            
-                            if (cmd == "reboot") {
-                                delay(1000);
-                                ESP.restart();
-                            }
-
-                            if (cmd == "download_ota") {
-                                String targetModel = cmdDoc["device_model"].as<String>();
-                                String version = cmdDoc["version"].as<String>(); 
-                                
-                                if (targetModel == DEVICE_MODEL) {
-                                    String fullDownloadUrl = "https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware/" + targetModel + "_" + version + ".bin";
-                                    WiFiClientSecure otaClient;
-                                    otaClient.setInsecure();
-                                    httpUpdate.rebootOnUpdate(false); 
-                                    if (httpUpdate.update(otaClient, fullDownloadUrl) == HTTP_UPDATE_OK) {
-                                        http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
-                                        http.addHeader("Content-Type", "application/json");
-                                        http.PATCH("{\"ota_staged\": true}");
-                                        http.end();
-                                    }
-                                }
-                            }
-                            return;
-                        }
-
-                        // 🔥 THE FIX: Apply the exact same Overrides for Cloud Commands
-                        if (_settingsMgr.updateFromJson(cmdDoc.as<JsonObject>())) {
-                            
-                            // 🔥 THE FIX: If "Resume Auto" is clicked from the cloud, clear overrides!
-                            if (cmdDoc.containsKey("isAutoMode") && cmdDoc["isAutoMode"].as<bool>() == true) {
-                                _hwEngine.forceResumeAuto();
-                            }
-
-                            if (cmdDoc.containsKey("isLightOn")) {
-                                bool turnedOn = cmdDoc["isLightOn"].as<bool>();
-                                _hwEngine.applyManualOverride("LIGHT", turnedOn);
-                                if (turnedOn && _settingsMgr.get().currentBrightness == 0) {
-                                    _settingsMgr.get().currentBrightness = _settingsMgr.get().maxBrightness;
-                                }
-                            }
-                            if (cmdDoc.containsKey("currentBrightness")) _hwEngine.applyManualOverride("LIGHT", true);
-                            if (cmdDoc.containsKey("isCO2On")) _hwEngine.applyManualOverride("CO2", cmdDoc["isCO2On"].as<bool>());
-                            if (cmdDoc.containsKey("isFanOn")) _hwEngine.applyManualOverride("FAN", cmdDoc["isFanOn"].as<bool>());
-                            
-                            _lastCommandReceivedTime = millis();
-                        }
-                        http.end();
-                        http.begin(client, cmdUrl);
-                        http.sendRequest("DELETE"); 
-                    }
-                }
-            }
-            http.end();
-        }
-
-        // 4. Heartbeat Push (Every 60s)
-        if (needsHeartbeat) {
-            _lastHeartbeat = now;
-            http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
-            http.addHeader("Content-Type", "application/json");
-            http.PATCH(generateHeartbeatJson());
-            http.end();
-        }
-
-        // 5. Delta Push
-        if (!_shadowInit || isDebouncedPush || isHourlyPush || isAutonomousChange || isRolloverPush) {
-            TankSettings backupShadow = _shadow; 
-            String deltaJson = generateDeltaStateJson();
-
-            if (deltaJson != "") {
-                http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
-                http.addHeader("Content-Type", "application/json");
-                int response = http.PATCH(deltaJson);
-                http.end();
-
-                if (response > 0) {
-                    if (isDebouncedPush) _settingsMgr.clearFirebaseSync(); 
-                    if (isHourlyPush) _lastAnalyticsPush = now;
-                } else {
-                    _shadow = backupShadow; 
-                }
-            } else {
-                if (isDebouncedPush) _settingsMgr.clearFirebaseSync();
-                if (isHourlyPush) _lastAnalyticsPush = now;
             }
         }
     }

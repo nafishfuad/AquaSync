@@ -3,8 +3,8 @@
 
 #include <Arduino.h>
 
-const String FW_VERSION = "v1.0.0";
-const int CURRENT_SCHEMA_VERSION = 2;
+const String FW_VERSION = "v1.1.0"; 
+const int CURRENT_SCHEMA_VERSION = 3;
 const String DEVICE_MODEL = "Aqua-Base";
 const String FIREBASE_URL = "https://aqua-fish-controller-default-rtdb.asia-southeast1.firebasedatabase.app";
 
@@ -40,13 +40,24 @@ struct TankSettings {
     int colorR;
     int colorG;
     int colorB;
+    
     uint16_t activeMinutesToday[24]; 
-    uint16_t activeMinutesHistory[30]; 
     uint16_t awakeMinutesToday[24]; 
-    uint16_t awakeMinutesHistory[30];
     int totalLoadSheddingToday;     
     int lightLoadSheddingToday;     
     int lastTrackedDay;             
+};
+
+// 🔥 FIX 1: The safe vault for midnight data transfer
+struct DailySnapshot {
+    bool pending = false;
+    uint16_t year = 0;
+    uint8_t month = 0;
+    uint8_t day = 0;
+    uint16_t activeMinutes[24];
+    uint16_t awakeMinutes[24];
+    int totalLS = 0;
+    int lightLS = 0;
 };
 
 #endif

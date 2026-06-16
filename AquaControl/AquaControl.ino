@@ -1,8 +1,9 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <HTTPClient.h>         // 🔥 NEW: Add this
-#include <WiFiClientSecure.h>   // 🔥 NEW: Add this
 #include <Preferences.h>
+// 🔥 NEW: Include Firebase SDK
+#include <Firebase_ESP_Client.h> 
+
 #include "CoreConfig.h"
 #include "SettingsManager.h"
 #include "HardwareEngine.h"
@@ -17,32 +18,28 @@ AquaNetworkManager* netManager;
 OutageTracker outageTracker(settingsMgr, hwEngine); 
 
 String hwid;
-
-// 🔥 NEW: Define the task handle for our FreeRTOS Network Core
 TaskHandle_t NetworkTaskHandle;
+
+// We need a dedicated FirebaseData object for the Autopsy request
+FirebaseData autopsyFbdo;
 
 String generateSecureHWID() {
     Preferences prefs;
     prefs.begin("aqua-ctrl", false);
-    
     String hwid = prefs.getString("secure_hwid", "");
-
     if (hwid == "") {
         String mac = WiFi.macAddress();
         mac.replace(":", ""); 
-
         const char charset[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
         String salt = "";
         for (int i = 0; i < 6; i++) {
             uint32_t randomIndex = esp_random() % 62; 
             salt += charset[randomIndex];
         }
-
         hwid = "AQUA" + mac + salt;
         prefs.putString("secure_hwid", hwid);
         Serial.println("[SYS] Generated New Secure HWID: " + hwid);
     }
-    
     prefs.end();
     return hwid;
 }
@@ -56,34 +53,26 @@ void networkTask(void * parameter) {
     for(;;) {
         if (netManager != nullptr) {
             netManager->handleClient();
-            netManager->syncFirebase(); // <-- This handles the 60s Heartbeat beautifully!
+            netManager->syncFirebase(); 
         }
         
-        // 🔥 PHASE 3: Cloud Autopsy (Runs exactly ONCE after NTP syncs)
-        if (!autopsyCompleted && WiFi.status() == WL_CONNECTED) {
+        // 🔥 PHASE 4: Cloud Autopsy via Firebase SDK
+        if (!autopsyCompleted && WiFi.status() == WL_CONNECTED && Firebase.ready()) {
             time_t nowTs = time(nullptr);
             if (nowTs > 1600000000) { 
-                WiFiClientSecure client;
-                client.setInsecure();
-                HTTPClient http;
-                
                 Serial.println("[AUTOPSY] Fetching last known heartbeat from Cloud...");
-                http.begin(client, FIREBASE_URL + "/devices/" + hwid + "/state/lastHeartbeatTs.json");
-                int httpCode = http.GET();
                 
-                if (httpCode == 200) {
-                    String payload = http.getString();
-                    uint32_t cloudTs = payload.toInt();
+                if (Firebase.RTDB.getInt(&autopsyFbdo, "/devices/" + hwid + "/telemetry/lastHeartbeatTs")) {
+                    uint32_t cloudTs = autopsyFbdo.intData();
                     outageTracker.performCloudAutopsy(cloudTs);
                 } else {
-                    Serial.println("[AUTOPSY] Cloud fetch failed, assuming clean boot.");
+                    Serial.println("[AUTOPSY] Cloud fetch failed or clean boot.");
                 }
-                http.end();
-                autopsyCompleted = true; // Lock it so it never runs again
+                autopsyCompleted = true; 
             }
         }
 
-        vTaskDelay(50 / portTICK_PERIOD_MS); 
+        vTaskDelay(pdMS_TO_TICKS(50)); 
     }
 }
 
@@ -94,14 +83,12 @@ void setup() {
     Serial.begin(115200);
     Serial.setTxTimeoutMs(0); 
 
-    // 🔥 CRITICAL NATIVE USB FIX: Wait 5 FULL SECONDS for Windows to mount the COM port!
     delay(5000); 
 
     Serial.println("\n\n=================================");
     Serial.println("🌊 AquaSync RTOS Booting...");
     Serial.println("=================================");
 
-    // 🔥 RADIO RESET FIX: Force the Wi-Fi chip to reset before we configure it
     WiFi.disconnect(true);
     delay(500);
 
@@ -112,7 +99,6 @@ void setup() {
     
     hwid = String(hwidStr);
     hwid.toUpperCase();
-    
     Serial.println("[SYS] Using Device ID: " + hwid);
 
     settingsMgr.begin();
@@ -158,29 +144,23 @@ void setup() {
     netManager->begin();
     Serial.println("[SYS] ✅ Network Manager initialized.");
 
-    // ==========================================
-    // 🔥 IGNITE THE RTOS SCHEDULER
-    // ==========================================
     xTaskCreate(
         networkTask,      
         "NetworkTask",    
-        8192,             
+        10000,             // Slightly larger stack for Firebase SDK
         NULL,             
-        1,                
+        0,                 
         &NetworkTaskHandle 
     );
 
     Serial.println("[SYS] ✅ FreeRTOS multi-threading activated. System fully online.");
 }
 
-// ==========================================
-// THE STANDARD CORE 1: DEDICATED HARDWARE LOOP
-// ==========================================
 void loop() {
     hwEngine.execute(settingsMgr.get(), settingsMgr.needsHardwareEval(), true);
     hwEngine.handleLEDs(); 
     btnManager.loop();     
     settingsMgr.processLazyFlashSave();
 
-    delay(5); // Keep hardware loop incredibly fast and responsive
+    vTaskDelay(pdMS_TO_TICKS(10)); 
 }

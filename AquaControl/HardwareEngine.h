@@ -9,14 +9,12 @@ class HardwareEngine {
 private:
     Preferences _prefs;
     bool _hasBooted = false;
-    bool _hasTimeBooted = false; // Tracks NTP Time sync
+    bool _hasTimeBooted = false; 
     bool _masterPowerState = false;
     
     float _currentActualPWM = 0.0;
     float _targetPWM = 0.0;
 
-    // 🔥 THE CACHE FIX: Stops the ESP32 from spamming the GPIO registers!
-    // This drops CPU utilization and stops the chip from getting hot.
     int _lastLightPWM = -1;
     int _lastRelayState = -1;
     int _lastCO2State = -1;
@@ -32,7 +30,6 @@ private:
     int _recoveryStartMins = 0;
     bool _isRecovering = false;
 
-    // --- Button Manual Overrides ---
     bool _overrideLight = false;
     bool _overrideCO2 = false;
     bool _overrideFan = false;
@@ -42,7 +39,6 @@ private:
     bool _lastAutoFan = false;
     bool _lastAutoModeState = true;
 
-    // --- LED Blinker ---
     unsigned long _ledTimer = 0;
     int _ledBlinksRemaining = 0;
     bool _ledIsOn = false;
@@ -51,14 +47,9 @@ private:
     void saveAnalyticsVault(TankSettings& settings) {
         _prefs.putBytes("actMins", settings.activeMinutesToday, sizeof(settings.activeMinutesToday));
         _prefs.putBytes("awkMins", settings.awakeMinutesToday, sizeof(settings.awakeMinutesToday));
-        
-        _prefs.putBytes("actHist", settings.activeMinutesHistory, sizeof(settings.activeMinutesHistory));
-        _prefs.putBytes("awkHist", settings.awakeMinutesHistory, sizeof(settings.awakeMinutesHistory));
-        
         _prefs.putInt("totLS", settings.totalLoadSheddingToday);
         _prefs.putInt("lgtLS", settings.lightLoadSheddingToday);
         _prefs.putInt("lastDay", settings.lastTrackedDay);
-        Serial.println("[SYS] 💾 Analytics securely backed up to Flash Vault.");
     }
 
     int parseTime(const char* timeStr) {
@@ -151,21 +142,19 @@ private:
 
 public:
     bool _isMaintenanceMode = false;
+    DailySnapshot snapshot; // 🔥 FIX 1: Make snapshot available to the Network Manager
 
-    // 🔥 THE FIX: Explicitly clears overrides when "Resume Auto" is clicked
     void forceResumeAuto() {
         _overrideLight = false;
         _overrideCO2 = false;
         _overrideFan = false;
-        _lastAutoModeState = false; // Forces the engine to instantly recalculate pins on the next tick
-        Serial.println("[HW] 🔄 Auto Schedule Forced Resume");
+        _lastAutoModeState = false; 
     }
 
     void startRecoveryRamp(int currentMins, int durationMins) {
         _isRecovering = true;
         _recoveryStartMins = currentMins;
         _recoveryEndMins = currentMins + durationMins;
-        Serial.printf("[HW] 💡 Starting Gentle Recovery Ramp for %d mins\n", durationMins);
     }
 
     void begin() {
@@ -236,10 +225,6 @@ public:
             _hasBooted = true;
             _prefs.getBytes("actMins", settings.activeMinutesToday, sizeof(settings.activeMinutesToday));
             _prefs.getBytes("awkMins", settings.awakeMinutesToday, sizeof(settings.awakeMinutesToday));
-            
-            _prefs.getBytes("actHist", settings.activeMinutesHistory, sizeof(settings.activeMinutesHistory));
-            _prefs.getBytes("awkHist", settings.awakeMinutesHistory, sizeof(settings.awakeMinutesHistory));
-            
             settings.totalLoadSheddingToday = _prefs.getInt("totLS", 0);
             settings.lightLoadSheddingToday = _prefs.getInt("lgtLS", 0);
             settings.lastTrackedDay = _prefs.getInt("lastDay", 0);
@@ -269,9 +254,6 @@ public:
             if (_currentActualPWM > 100.0) _currentActualPWM = 100.0;
         }
         
-        // ==========================================
-        // 🔥 THE REGISTER SPAM CACHE FIX
-        // ==========================================
         int currentLightPWM = settings.isLightOn ? map((int)_currentActualPWM, 0, 100, 255, 0) : 255;
         if (currentLightPWM != _lastLightPWM) {
             analogWrite(PIN_LIGHT, currentLightPWM);
@@ -295,40 +277,34 @@ public:
             analogWrite(PIN_FAN, currentFanPWM);
             _lastFanPWM = currentFanPWM;
         }
-        // ==========================================
 
         if (timeValid && (nowMillis - _lastBreadcrumbTick >= 60000)) {
             _lastBreadcrumbTick = nowMillis;
-            
             int currentDayOfYear = timeinfo->tm_yday; 
             
             if (settings.lastTrackedDay != 0 && settings.lastTrackedDay != currentDayOfYear) {
                 
-                int daysMissed = currentDayOfYear - settings.lastTrackedDay;
-                if (daysMissed < 0) daysMissed += 365; 
-                if (daysMissed > 30) daysMissed = 30;  
+                // 🔥 FIX 1: Safely pack yesterday's data into the snapshot before wiping it!
+                time_t yesterday = nowTime - 86400; // Subtract 24 hours to get yesterday's date
+                struct tm* ytm = localtime(&yesterday);
                 
-                for (int i = 29; i >= daysMissed; i--) {
-                    settings.activeMinutesHistory[i] = settings.activeMinutesHistory[i - daysMissed];
-                    settings.awakeMinutesHistory[i] = settings.awakeMinutesHistory[i - daysMissed];
-                }
+                snapshot.year = ytm->tm_year + 1900;
+                snapshot.month = ytm->tm_mon + 1;
+                snapshot.day = ytm->tm_mday;
+                snapshot.totalLS = settings.totalLoadSheddingToday;
+                snapshot.lightLS = settings.lightLoadSheddingToday;
                 
-                for (int i = 1; i < daysMissed; i++) {
-                    settings.activeMinutesHistory[i] = 0;
-                    settings.awakeMinutesHistory[i] = 0;
-                }
-                
-                uint16_t yTotal = 0;
-                uint16_t yAwake = 0;
                 for(int i = 0; i < 24; i++) { 
-                    yTotal += settings.activeMinutesToday[i]; 
-                    yAwake += settings.awakeMinutesToday[i];
+                    snapshot.activeMinutes[i] = settings.activeMinutesToday[i];
+                    snapshot.awakeMinutes[i] = settings.awakeMinutesToday[i];
+                    
+                    // Now it is safe to wipe the live RAM for the new day
                     settings.activeMinutesToday[i] = 0; 
                     settings.awakeMinutesToday[i] = 0; 
                 }
                 
-                settings.activeMinutesHistory[0] = yTotal;
-                settings.awakeMinutesHistory[0] = yAwake;
+                snapshot.pending = true; // Tell the Network Manager to upload this!
+
                 settings.totalLoadSheddingToday = 0; 
                 settings.lightLoadSheddingToday = 0;
                 settings.lastTrackedDay = currentDayOfYear;
