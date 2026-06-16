@@ -23,7 +23,6 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 2500) {
 }
 
 export const API = {
-    // 🔥 THE FIX: Restored the Hotspot Discovery Scanner
     async checkHotspotHandshake() {
         try {
             const response = await fetchWithTimeout('http://192.168.4.1/api/handshake', {
@@ -31,26 +30,20 @@ export const API = {
                 headers: { 'Content-Type': 'application/json' }
             }, 3000);
             
-            if (response.ok) {
-                return await response.json();
-            }
+            if (response.ok) return await response.json();
             return null;
         } catch (err) {
-            return null; // Silently fail so the scanner can keep trying
+            return null; 
         }
     },
 
     async sendCommand(device, commandPayload) {
-        if (device.isDummy) {
-            return { 
-                success: true, 
-                source: "cloud", 
-                data: { ...device.metrics, localIP: "127.0.0.1", lastHeartbeatTs: Math.floor(Date.now() / 1000) } 
-            };
-        }
+        if (device.isDummy) return { success: true, source: "cloud" };
 
         const now = Date.now();
+        // Pack the entire payload exactly as it is, adding a timestamp
         const commandWrapper = { ...commandPayload, timestamp: Math.floor(now / 1000) };
+        
         let useCloud = false;
         let localSucceeded = false;
 
@@ -58,7 +51,7 @@ export const API = {
             useCloud = true;
         }
 
-        // 1. Try Local Hardware First
+        // 1. Local Network Attempt
         if (!useCloud && device.localIP) {
             try {
                 const res = await fetchWithTimeout(`http://${device.localIP}/api/control`, {
@@ -77,11 +70,12 @@ export const API = {
             }
         }
 
-        // 2. The Cloud CQRS Protocol
+        // 2. Cloud WebSocket Attempt (🔥 FIX 3: Unified Push)
         try {
             const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
             const authQuery = token ? `?auth=${token}` : "";
 
+            // Everything goes to config! The ESP32 parses "commands" out of it safely.
             if (commandWrapper.command || useCloud || !localSucceeded) {
                 await fetch(`${FIREBASE_URL}/devices/${device.hwid}/config.json${authQuery}`, {
                     method: 'PATCH',
@@ -89,7 +83,6 @@ export const API = {
                     body: JSON.stringify(commandWrapper)
                 });
             }
-            
             return { success: true, source: localSucceeded ? "local" : "cloud" };
 
         } catch (err) {
@@ -106,10 +99,8 @@ export const API = {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ssid, pass, token, deviceName }) 
             }, 10000); 
-            
             return response.ok;
         } catch (err) {
-            console.warn("[API] Provisioning connection dropped (Likely rebooting).");
             return true; 
         }
     },
@@ -118,11 +109,9 @@ export const API = {
         try {
             const response = await fetch("https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware.json?t=" + Date.now());
             if (!response.ok) return null;
-            
             const data = await response.json();
             return data[model] || null; 
         } catch (err) {
-            console.error("[API] Failed to fetch OTA manifest from GitHub.", err);
             return null;
         }
     }

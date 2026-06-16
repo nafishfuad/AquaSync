@@ -1,7 +1,8 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <Preferences.h>
-// 🔥 NEW: Include Firebase SDK
+#include <HTTPClient.h>         
+#include <WiFiClientSecure.h>   
 #include <Firebase_ESP_Client.h> 
 
 #include "CoreConfig.h"
@@ -19,9 +20,6 @@ OutageTracker outageTracker(settingsMgr, hwEngine);
 
 String hwid;
 TaskHandle_t NetworkTaskHandle;
-
-// We need a dedicated FirebaseData object for the Autopsy request
-FirebaseData autopsyFbdo;
 
 String generateSecureHWID() {
     Preferences prefs;
@@ -44,9 +42,6 @@ String generateSecureHWID() {
     return hwid;
 }
 
-// ==========================================
-// 🔥 THE NEW CORE 0: DEDICATED NETWORK LOOP
-// ==========================================
 void networkTask(void * parameter) {
     bool autopsyCompleted = false;
 
@@ -56,18 +51,26 @@ void networkTask(void * parameter) {
             netManager->syncFirebase(); 
         }
         
-        // 🔥 PHASE 4: Cloud Autopsy via Firebase SDK
-        if (!autopsyCompleted && WiFi.status() == WL_CONNECTED && Firebase.ready()) {
+        // 🔥 FIX 1: Use safe HTTP Client for Autopsy to bypass token deadlocks
+        if (!autopsyCompleted && WiFi.status() == WL_CONNECTED) {
             time_t nowTs = time(nullptr);
             if (nowTs > 1600000000) { 
-                Serial.println("[AUTOPSY] Fetching last known heartbeat from Cloud...");
+                WiFiClientSecure client;
+                client.setInsecure();
+                HTTPClient http;
                 
-                if (Firebase.RTDB.getInt(&autopsyFbdo, "/devices/" + hwid + "/telemetry/lastHeartbeatTs")) {
-                    uint32_t cloudTs = autopsyFbdo.intData();
+                Serial.println("[AUTOPSY] Fetching last known heartbeat from Cloud...");
+                http.begin(client, FIREBASE_URL + "/devices/" + hwid + "/telemetry/lastHeartbeatTs.json");
+                int httpCode = http.GET();
+                
+                if (httpCode == 200) {
+                    String payload = http.getString();
+                    uint32_t cloudTs = payload.toInt();
                     outageTracker.performCloudAutopsy(cloudTs);
                 } else {
                     Serial.println("[AUTOPSY] Cloud fetch failed or clean boot.");
                 }
+                http.end();
                 autopsyCompleted = true; 
             }
         }
@@ -76,13 +79,9 @@ void networkTask(void * parameter) {
     }
 }
 
-// ==========================================
-// SINGLE SETUP FUNCTION
-// ==========================================
 void setup() {
     Serial.begin(115200);
     Serial.setTxTimeoutMs(0); 
-
     delay(5000); 
 
     Serial.println("\n\n=================================");
@@ -132,13 +131,11 @@ void setup() {
             Serial.println("[WIFI] ❌ Connection failed. Starting Hotspot Setup Mode.");
             WiFi.mode(WIFI_AP);
             WiFi.softAP("AquaControl_setup"); 
-            Serial.println("[WIFI] 🌐 Hotspot IP: 192.168.4.1");
         }
     } else {
         Serial.println("[WIFI] 📡 No credentials found. Starting Hotspot Setup Mode.");
         WiFi.mode(WIFI_AP);
         WiFi.softAP("AquaControl_setup"); 
-        Serial.println("[WIFI] 🌐 Hotspot IP: 192.168.4.1");
     }
 
     netManager->begin();
@@ -147,7 +144,7 @@ void setup() {
     xTaskCreate(
         networkTask,      
         "NetworkTask",    
-        10000,             // Slightly larger stack for Firebase SDK
+        10000,            
         NULL,             
         0,                 
         &NetworkTaskHandle 
@@ -161,6 +158,5 @@ void loop() {
     hwEngine.handleLEDs(); 
     btnManager.loop();     
     settingsMgr.processLazyFlashSave();
-
     vTaskDelay(pdMS_TO_TICKS(10)); 
 }

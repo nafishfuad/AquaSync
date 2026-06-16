@@ -3,6 +3,7 @@
 
 #include <WebServer.h>
 #include <WiFiClientSecure.h>   
+#include <HTTPClient.h>
 #include <HTTPUpdate.h>         
 #include <Firebase_ESP_Client.h>
 #include <addons/TokenHelper.h>
@@ -26,7 +27,6 @@ private:
 
     TankSettings _shadow; 
     bool _shadowInit = false;
-    bool _firebaseReady = false;
     unsigned long _lastHeartbeat = 0;
 
     void addCorsHeaders() {
@@ -91,24 +91,13 @@ private:
         if (deserializeJson(doc, rawPayload)) { _server.send(400, "application/json", "{\"error\":\"Malformed JSON\"}"); return; }
 
         if (_settingsMgr.updateFromJson(doc.as<JsonObject>())) {
-            if (doc.containsKey("isAutoMode") && doc["isAutoMode"].as<bool>() == true) _hwEngine.forceResumeAuto();
-            if (doc.containsKey("isLightOn")) {
-                bool turnedOn = doc["isLightOn"].as<bool>();
-                _hwEngine.applyManualOverride("LIGHT", turnedOn);
-                if (turnedOn && _settingsMgr.get().currentBrightness == 0) _settingsMgr.get().currentBrightness = _settingsMgr.get().maxBrightness;
-            }
-            if (doc.containsKey("currentBrightness")) _hwEngine.applyManualOverride("LIGHT", true);
-            if (doc.containsKey("isCO2On")) _hwEngine.applyManualOverride("CO2", doc["isCO2On"].as<bool>());
-            if (doc.containsKey("isFanOn")) _hwEngine.applyManualOverride("FAN", doc["isFanOn"].as<bool>());
-
-            _hwEngine.execute(_settingsMgr.get(), true, false);
+            applyOverrides(doc);
             _server.send(200, "application/json", "{\"status\":\"success\"}"); 
         } else {
             _server.send(400, "application/json", "{\"status\":\"rejected_version\"}");
         }
     }
 
-    // 🔥 THE FIX: Restored the Missing Pairing Wizard APIs
     void handleHandshake() {
         addCorsHeaders();
         JsonDocument doc;
@@ -136,59 +125,87 @@ private:
         delay(500); WiFi.disconnect(true, true); delay(500); ESP.restart();
     }
 
+    void applyOverrides(JsonDocument& doc) {
+        if (doc.containsKey("isAutoMode") && doc["isAutoMode"].as<bool>() == true) _hwEngine.forceResumeAuto();
+        if (doc.containsKey("isLightOn")) {
+            bool turnedOn = doc["isLightOn"].as<bool>();
+            _hwEngine.applyManualOverride("LIGHT", turnedOn);
+            if (turnedOn && _settingsMgr.get().currentBrightness == 0) _settingsMgr.get().currentBrightness = _settingsMgr.get().maxBrightness;
+        }
+        if (doc.containsKey("currentBrightness")) _hwEngine.applyManualOverride("LIGHT", true);
+        if (doc.containsKey("isCO2On")) _hwEngine.applyManualOverride("CO2", doc["isCO2On"].as<bool>());
+        if (doc.containsKey("isFanOn")) _hwEngine.applyManualOverride("FAN", doc["isFanOn"].as<bool>());
+        
+        _hwEngine.execute(_settingsMgr.get(), true, false);
+    }
+
+    void executeSystemCommand(String cmd, JsonDocument& doc) {
+        if (cmd == "factory_reset") {
+            Preferences p; p.begin("aqua-ctrl", false); p.clear(); p.end();
+            p.begin("aqua-tracker", false); p.clear(); p.end();
+            WiFi.disconnect(true, true); delay(500); ESP.restart();
+        }
+        if (cmd == "reboot") { delay(1000); ESP.restart(); }
+
+        if (cmd == "download_ota") {
+            String targetModel = doc["device_model"].as<String>();
+            String version = doc["version"].as<String>(); 
+            
+            Firebase.RTDB.deleteNode(&_fbdo, "/devices/" + _hwid + "/config/device_model");
+            Firebase.RTDB.deleteNode(&_fbdo, "/devices/" + _hwid + "/config/version");
+            
+            if (targetModel == DEVICE_MODEL) {
+                String fullDownloadUrl = "https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware/" + targetModel + "_" + version + ".bin";
+                WiFiClientSecure otaClient;
+                otaClient.setInsecure();
+                httpUpdate.rebootOnUpdate(false); 
+                if (httpUpdate.update(otaClient, fullDownloadUrl) == HTTP_UPDATE_OK) {
+                    WiFiClientSecure client; client.setInsecure(); HTTPClient http;
+                    http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/telemetry.json");
+                    http.addHeader("Content-Type", "application/json");
+                    http.PATCH("{\"ota_staged\": true}");
+                    http.end();
+                }
+            }
+        }
+    }
+
+    // 🔥 FIX 2: Stream Fragmentation Handler. Processes both objects AND raw primitives safely.
     void handleStreamEvent() {
-        if (_streamFbdo.dataTypeEnum() == firebase_rtdb_data_type_json) {
+        String path = _streamFbdo.dataPath();
+        String type = _streamFbdo.dataType();
+
+        if (type == "json") {
             JsonDocument doc;
             deserializeJson(doc, _streamFbdo.jsonString());
 
             if (doc.containsKey("command")) {
                 String cmd = doc["command"].as<String>();
                 Firebase.RTDB.deleteNode(&_fbdo, "/devices/" + _hwid + "/config/command");
-
-                if (cmd == "factory_reset") {
-                    Preferences p; p.begin("aqua-ctrl", false); p.clear(); p.end();
-                    p.begin("aqua-tracker", false); p.clear(); p.end();
-                    WiFi.disconnect(true, true); delay(500); ESP.restart();
-                }
-                if (cmd == "reboot") { delay(1000); ESP.restart(); }
-
-                if (cmd == "download_ota") {
-                    String targetModel = doc["device_model"].as<String>();
-                    String version = doc["version"].as<String>(); 
-                    
-                    Firebase.RTDB.deleteNode(&_fbdo, "/devices/" + _hwid + "/config/device_model");
-                    Firebase.RTDB.deleteNode(&_fbdo, "/devices/" + _hwid + "/config/version");
-                    
-                    if (targetModel == DEVICE_MODEL) {
-                        String fullDownloadUrl = "https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware/" + targetModel + "_" + version + ".bin";
-                        WiFiClientSecure otaClient;
-                        otaClient.setInsecure();
-                        httpUpdate.rebootOnUpdate(false); 
-                        if (httpUpdate.update(otaClient, fullDownloadUrl) == HTTP_UPDATE_OK) {
-                            Firebase.RTDB.setBool(&_fbdo, "/devices/" + _hwid + "/telemetry/ota_staged", true);
-                        }
-                    }
-                }
+                executeSystemCommand(cmd, doc);
                 return;
             }
 
-            if (doc.containsKey("ota_staged") && doc["ota_staged"].as<bool>() == false) {
-                Firebase.RTDB.deleteNode(&_fbdo, "/devices/" + _hwid + "/config/ota_staged");
-                Firebase.RTDB.setBool(&_fbdo, "/devices/" + _hwid + "/telemetry/ota_staged", false);
+            if (_settingsMgr.updateFromJson(doc.as<JsonObject>())) applyOverrides(doc);
+            
+        } else {
+            // Reconstruct JSON from raw string/bool primitive stream data
+            String key = path.substring(1); 
+            if (key == "command" && type == "string") {
+                String cmd = _streamFbdo.stringData();
+                Firebase.RTDB.deleteNode(&_fbdo, "/devices/" + _hwid + "/config/command");
+                JsonDocument emptyDoc;
+                executeSystemCommand(cmd, emptyDoc);
                 return;
             }
 
-            if (_settingsMgr.updateFromJson(doc.as<JsonObject>())) {
-                if (doc.containsKey("isAutoMode") && doc["isAutoMode"].as<bool>() == true) _hwEngine.forceResumeAuto();
-                if (doc.containsKey("isLightOn")) {
-                    bool turnedOn = doc["isLightOn"].as<bool>();
-                    _hwEngine.applyManualOverride("LIGHT", turnedOn);
-                    if (turnedOn && _settingsMgr.get().currentBrightness == 0) _settingsMgr.get().currentBrightness = _settingsMgr.get().maxBrightness;
-                }
-                if (doc.containsKey("currentBrightness")) _hwEngine.applyManualOverride("LIGHT", true);
-                if (doc.containsKey("isCO2On")) _hwEngine.applyManualOverride("CO2", doc["isCO2On"].as<bool>());
-                if (doc.containsKey("isFanOn")) _hwEngine.applyManualOverride("FAN", doc["isFanOn"].as<bool>());
-            }
+            JsonDocument doc;
+            if (type == "boolean") doc[key] = _streamFbdo.boolData();
+            else if (type == "int") doc[key] = _streamFbdo.intData();
+            else if (type == "float") doc[key] = _streamFbdo.floatData();
+            else if (type == "string") doc[key] = _streamFbdo.stringData();
+            
+            if (_settingsMgr.updateFromJson(doc.as<JsonObject>())) applyOverrides(doc);
         }
     }
 
@@ -198,88 +215,76 @@ public:
     void begin() {
         _server.onNotFound([this]() { handlePreflight(); });
         _server.on("/info", HTTP_GET, [this]() { handleInfo(); });
-        
-        // 🔥 THE FIX: Restored the Hotspot Wizard APIs Routes
         _server.on("/api/handshake", HTTP_GET, [this]() { handleHandshake(); });
         _server.on("/api/handshake", HTTP_OPTIONS, [this]() { handlePreflight(); });
         _server.on("/wifi", HTTP_POST, [this]() { handleWifiProvisioning(); });
         _server.on("/wifi", HTTP_OPTIONS, [this]() { handlePreflight(); });
-
         _server.on("/api/control", HTTP_POST, [this]() { handleControl(); });
         _server.on("/api/control", HTTP_OPTIONS, [this]() { handlePreflight(); }); 
         _server.begin();
 
         _config.database_url = FIREBASE_URL;
-        _config.signer.test_mode = true; 
+        // 🔥 FIX 1: Removed 'test_mode = true'. Allows public database connections instantly.
         Firebase.reconnectWiFi(true);
         Firebase.begin(&_config, &_auth);
 
         if (Firebase.RTDB.beginStream(&_streamFbdo, "/devices/" + _hwid + "/config")) {
             Serial.println("[FIREBASE] 📡 Real-Time Stream connected to /config");
         }
-        _firebaseReady = true;
     }
 
     void handleClient() { _server.handleClient(); }
 
     void syncFirebase() {
-        if (!_firebaseReady || !Firebase.ready()) return;
-
         if (Firebase.RTDB.readStream(&_streamFbdo)) {
-            if (_streamFbdo.streamAvailable()) {
-                handleStreamEvent();
-            }
+            if (_streamFbdo.streamAvailable()) handleStreamEvent();
         }
 
         unsigned long now = millis();
         TankSettings& s = _settingsMgr.get();
-        
-        if (_hwEngine.snapshot.pending) {
-            JsonDocument doc;
-            int totalAct = 0, totalAwk = 0;
-            for(int i=0; i<24; i++) {
-                doc["hourlyData/" + String(i)] = _hwEngine.snapshot.activeMinutes[i];
-                doc["awakeData/" + String(i)] = _hwEngine.snapshot.awakeMinutes[i];
-                totalAct += _hwEngine.snapshot.activeMinutes[i];
-                totalAwk += _hwEngine.snapshot.awakeMinutes[i];
-            }
-            doc["totalActiveMins"] = totalAct;
-            doc["totalAwakeMins"] = totalAwk;
-            doc["totalLoadShedding"] = _hwEngine.snapshot.totalLS;
-            doc["lightLoadShedding"] = _hwEngine.snapshot.lightLS;
-
-            char dateStr[16];
-            sprintf(dateStr, "%04d-%02d-%02d", _hwEngine.snapshot.year, _hwEngine.snapshot.month, _hwEngine.snapshot.day);
-
-            String out; serializeJson(doc, out);
-            FirebaseJson fbSnapshot;
-            fbSnapshot.setJsonData(out);
-
-            if (Firebase.RTDB.updateNodeSilent(&_fbdo, "/devices/" + _hwid + "/analytics/" + String(dateStr), &fbSnapshot)) {
-                Serial.println("[FIREBASE] 📈 Successfully pushed Midnight Snapshot to Analytics Vault!");
-                _hwEngine.snapshot.pending = false; 
-            }
-        }
-        
         bool needsHeartbeat = (now - _lastHeartbeat > 60000);
-        
         bool isAutonomousChange = _shadowInit && (
-            s.isLightOn != _shadow.isLightOn ||
-            s.isCO2On != _shadow.isCO2On ||
-            s.isFanOn != _shadow.isFanOn ||
-            s.currentBrightness != _shadow.currentBrightness
+            s.isLightOn != _shadow.isLightOn || s.isCO2On != _shadow.isCO2On ||
+            s.isFanOn != _shadow.isFanOn || s.currentBrightness != _shadow.currentBrightness
         );
 
-        if (!_shadowInit || isAutonomousChange || needsHeartbeat) {
-            String telemetryJson = generateTelemetryJson();
-            if (telemetryJson != "") {
-                FirebaseJson fbTelemetry;
-                fbTelemetry.setJsonData(telemetryJson);
-                
-                if (Firebase.RTDB.updateNodeSilent(&_fbdo, "/devices/" + _hwid + "/telemetry", &fbTelemetry)) {
-                    _shadow = s;
-                    _shadowInit = true;
-                    _lastHeartbeat = now;
+        if (_hwEngine.snapshot.pending || !_shadowInit || isAutonomousChange || needsHeartbeat) {
+            WiFiClientSecure client; client.setInsecure(); HTTPClient http;
+
+            // 1. Snapshot Push
+            if (_hwEngine.snapshot.pending) {
+                JsonDocument doc;
+                int totalAct = 0, totalAwk = 0;
+                for(int i=0; i<24; i++) {
+                    doc["hourlyData/" + String(i)] = _hwEngine.snapshot.activeMinutes[i];
+                    doc["awakeData/" + String(i)] = _hwEngine.snapshot.awakeMinutes[i];
+                    totalAct += _hwEngine.snapshot.activeMinutes[i];
+                    totalAwk += _hwEngine.snapshot.awakeMinutes[i];
+                }
+                doc["totalActiveMins"] = totalAct; doc["totalAwakeMins"] = totalAwk;
+                doc["totalLoadShedding"] = _hwEngine.snapshot.totalLS; doc["lightLoadShedding"] = _hwEngine.snapshot.lightLS;
+
+                String out; serializeJson(doc, out);
+                char dateStr[16]; sprintf(dateStr, "%04d-%02d-%02d", _hwEngine.snapshot.year, _hwEngine.snapshot.month, _hwEngine.snapshot.day);
+
+                http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/analytics/" + String(dateStr) + ".json");
+                http.addHeader("Content-Type", "application/json");
+                if (http.PATCH(out) > 0) _hwEngine.snapshot.pending = false; 
+                http.end();
+            }
+            
+            // 2. Telemetry Heartbeat Push
+            if (!_shadowInit || isAutonomousChange || needsHeartbeat) {
+                String telemetryJson = generateTelemetryJson();
+                if (telemetryJson != "") {
+                    http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/telemetry.json");
+                    http.addHeader("Content-Type", "application/json");
+                    if (http.PATCH(telemetryJson) > 0) {
+                        _shadow = s;
+                        _shadowInit = true;
+                        _lastHeartbeat = now;
+                    }
+                    http.end();
                 }
             }
         }
