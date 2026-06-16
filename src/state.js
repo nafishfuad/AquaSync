@@ -109,8 +109,7 @@ export const DeviceStore = {
             if (storedData) {
                 this.devices = JSON.parse(storedData);
                 for (let hwid in this.devices) {
-                    let dev = this.devices[hwid];
-                    if (!dev.historicalData) dev.historicalData = []; 
+                    if (!this.devices[hwid].historicalData) this.devices[hwid].historicalData = []; 
                 }
             }
         } catch (error) {
@@ -123,6 +122,12 @@ export const DeviceStore = {
         } else if (Object.keys(this.devices).length > 0) {
             this.activeDeviceId = Object.keys(this.devices)[0];
         }
+        
+        // 🔥 THE FIX: Guests MUST start the telemetry stream when the page loads!
+        if (this.activeDeviceId) {
+            this.startCloudStream(this.activeDeviceId);
+        }
+
         window.dispatchEvent(new Event("aquasync_data_ready"));
     },
 
@@ -202,7 +207,7 @@ export const DeviceStore = {
                     fanOffTime: "20:00", fanSpeed: 50, colorW: 100, colorR: 100, colorG: 100, colorB: 100
                 },
                 capabilities: { hasLight: true, hasCO2: true, hasFan: true, hasColorSpectrum: true },
-                historicalData: [], // 🔥 PHASE 4: Stores the raw daily snapshots from Firebase
+                historicalData: [], 
                 analyticsData: {
                     today: { totalActive: "00h 00m", loadShedding: "00h 00m", hourlyGraph: Array(24).fill(0), awakeData: Array(24).fill(0) },
                     week: { totalActive: "00h 00m", avgLight: "00h 00m", loadShedding: "00h 00m", dailyGraph: Array(7).fill(0) },
@@ -253,9 +258,8 @@ export const DeviceStore = {
         this.save();
     },
 
-    // 🔥 PHASE 4: Fetch historical data once on load, instead of polling the ESP32
     async fetchHistoricalAnalytics(hwid) {
-        if (IdentityStore.isGuest) return;
+        // 🔥 THE FIX: Removed `if (IdentityStore.isGuest) return;`
         try {
             const analyticsRef = query(ref(db, `devices/${hwid}/analytics`), orderByKey(), limitToLast(30));
             const snapshot = await get(analyticsRef);
@@ -276,15 +280,13 @@ export const DeviceStore = {
         }
     },
 
-    // 🔥 PHASE 4: Listens to the telemetry shard (not state)
     startCloudStream(hwid) {
-        if (IdentityStore.isGuest) return; 
+        // 🔥 THE FIX: Removed `if (IdentityStore.isGuest) return;`
         
         if (this._activeStreamRef) {
             off(this._activeStreamRef);
         }
 
-        // Fetch the 30-day history in the background when the socket opens
         this.fetchHistoricalAnalytics(hwid);
 
         this._activeStreamRef = ref(db, `devices/${hwid}/telemetry`);
@@ -295,10 +297,8 @@ export const DeviceStore = {
                 const data = snapshot.val();
                 if (data.localIP) this.updateNetwork(hwid, data.localIP, true);
                 
-                // Fetch the config to merge user intent with hardware reality
                 get(ref(db, `devices/${hwid}/config`)).then((configSnap) => {
                     const configData = configSnap.exists() ? configSnap.val() : {};
-                    // Overlay telemetry (hardware truth) over config (user intent)
                     this.updateDeviceState(hwid, { ...configData, ...data });
                     window.dispatchEvent(new CustomEvent("aquasync_stream_update"));
                 });
@@ -306,7 +306,6 @@ export const DeviceStore = {
         });
     },
 
-    // 🔥 PHASE 4: Client-Side Number Crunching
     recalculateAnalytics(hwid) {
         const dev = this.devices[hwid];
         if (!dev) return;
@@ -314,7 +313,6 @@ export const DeviceStore = {
         const m = dev.metrics;
         const history = dev.historicalData || [];
         
-        // 1. Calculate Today's Live Graph
         const h = toArray(m.hourlyData, 24, 0);
         const awake = toArray(m.awakeData, 24, 1);
         let todayTotal = m.liveActiveMins || 0;
@@ -322,7 +320,6 @@ export const DeviceStore = {
         const lightOutageMins = m.lightLoadSheddingToday || 0;
         const totalOutageMins = m.totalLoadSheddingToday || 0;
 
-        // 2. Build Continuous 30-Day and 7-Day Arrays
         const last30Graph = [];
         let monthTotalMins = todayTotal;
         let monthValidDays = 1;
@@ -339,7 +336,6 @@ export const DeviceStore = {
             targetDate.setDate(today.getDate() - i);
             const dateStr = targetDate.toISOString().split('T')[0];
 
-            // Find if Firebase has data for this exact date
             const historicDay = history.find(entry => entry.date === dateStr);
             const activeMins = historicDay ? (historicDay.totalActiveMins || 0) : 0;
 
@@ -354,7 +350,6 @@ export const DeviceStore = {
             }
         }
 
-        // Add today to the end of the graphs
         last30Graph.push(+(todayTotal / 60).toFixed(1));
         last7Graph.push(+(todayTotal / 60).toFixed(1));
 
@@ -406,7 +401,6 @@ export const DeviceStore = {
 
     save() {
         try {
-            // Drop historical data before saving to localStorage to save space
             const clone = JSON.parse(JSON.stringify(this.devices));
             for (let id in clone) clone[id].historicalData = [];
             localStorage.setItem("aquasync_ecosystem", JSON.stringify(clone));

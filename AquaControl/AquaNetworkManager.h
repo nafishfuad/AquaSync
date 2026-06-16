@@ -27,6 +27,7 @@ private:
 
     TankSettings _shadow; 
     bool _shadowInit = false;
+    bool _firebaseReady = false;
     unsigned long _lastHeartbeat = 0;
 
     void addCorsHeaders() {
@@ -156,8 +157,7 @@ private:
             
             if (targetModel == DEVICE_MODEL) {
                 String fullDownloadUrl = "https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware/" + targetModel + "_" + version + ".bin";
-                WiFiClientSecure otaClient;
-                otaClient.setInsecure();
+                WiFiClientSecure otaClient; otaClient.setInsecure();
                 httpUpdate.rebootOnUpdate(false); 
                 if (httpUpdate.update(otaClient, fullDownloadUrl) == HTTP_UPDATE_OK) {
                     WiFiClientSecure client; client.setInsecure(); HTTPClient http;
@@ -170,7 +170,6 @@ private:
         }
     }
 
-    // 🔥 FIX 2: Stream Fragmentation Handler. Processes both objects AND raw primitives safely.
     void handleStreamEvent() {
         String path = _streamFbdo.dataPath();
         String type = _streamFbdo.dataType();
@@ -189,7 +188,6 @@ private:
             if (_settingsMgr.updateFromJson(doc.as<JsonObject>())) applyOverrides(doc);
             
         } else {
-            // Reconstruct JSON from raw string/bool primitive stream data
             String key = path.substring(1); 
             if (key == "command" && type == "string") {
                 String cmd = _streamFbdo.stringData();
@@ -223,19 +221,27 @@ public:
         _server.on("/api/control", HTTP_OPTIONS, [this]() { handlePreflight(); }); 
         _server.begin();
 
-        _config.database_url = FIREBASE_URL;
-        // 🔥 FIX 1: Removed 'test_mode = true'. Allows public database connections instantly.
-        Firebase.reconnectWiFi(true);
-        Firebase.begin(&_config, &_auth);
+        // 🔥 THE FIX: ONLY start Firebase if we are actually connected to the Internet!
+        if (WiFi.status() == WL_CONNECTED) {
+            _config.database_url = FIREBASE_URL;
+            Firebase.reconnectWiFi(true);
+            Firebase.begin(&_config, &_auth);
 
-        if (Firebase.RTDB.beginStream(&_streamFbdo, "/devices/" + _hwid + "/config")) {
-            Serial.println("[FIREBASE] 📡 Real-Time Stream connected to /config");
+            if (Firebase.RTDB.beginStream(&_streamFbdo, "/devices/" + _hwid + "/config")) {
+                Serial.println("[FIREBASE] 📡 Real-Time Stream connected to /config");
+            }
+            _firebaseReady = true;
+        } else {
+            Serial.println("[FIREBASE] ⚠️ Offline Mode (Hotspot). Cloud stream disabled to preserve CPU.");
         }
     }
 
     void handleClient() { _server.handleClient(); }
 
     void syncFirebase() {
+        // 🔥 THE FIX: Immediately abort Firebase operations if we drop offline
+        if (WiFi.status() != WL_CONNECTED || !_firebaseReady || !Firebase.ready()) return;
+
         if (Firebase.RTDB.readStream(&_streamFbdo)) {
             if (_streamFbdo.streamAvailable()) handleStreamEvent();
         }
@@ -251,7 +257,6 @@ public:
         if (_hwEngine.snapshot.pending || !_shadowInit || isAutonomousChange || needsHeartbeat) {
             WiFiClientSecure client; client.setInsecure(); HTTPClient http;
 
-            // 1. Snapshot Push
             if (_hwEngine.snapshot.pending) {
                 JsonDocument doc;
                 int totalAct = 0, totalAwk = 0;
@@ -273,7 +278,6 @@ public:
                 http.end();
             }
             
-            // 2. Telemetry Heartbeat Push
             if (!_shadowInit || isAutonomousChange || needsHeartbeat) {
                 String telemetryJson = generateTelemetryJson();
                 if (telemetryJson != "") {
