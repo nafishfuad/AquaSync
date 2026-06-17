@@ -20,7 +20,6 @@ OutageTracker outageTracker(settingsMgr, hwEngine);
 
 String hwid;
 TaskHandle_t NetworkTaskHandle;
-
 String homeSsid = "";
 String homePass = "";
 
@@ -34,7 +33,7 @@ String generateSecureHWID() {
         const char charset[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
         String salt = "";
         for (int i = 0; i < 6; i++) {
-            uint32_t randomIndex = esp_random() % 62; 
+            uint32_t randomIndex = esp_random() % 62;
             salt += charset[randomIndex];
         }
         hwid = "AQUA-" + mac.substring(mac.length() - 4) + salt;
@@ -55,10 +54,9 @@ void networkTask(void * parameter) {
             netManager->syncFirebase(); 
         }
         
-        // 🔥 THE FIX: Background Router Scanner
+        // Background Router Scanner
         if (homeSsid != "") {
             if (WiFi.status() != WL_CONNECTED) {
-                // If the router is still booting, retry every 30 seconds
                 if (millis() - lastWifiRetry > 30000) {
                     lastWifiRetry = millis();
                     Serial.println("[WIFI] Router not found yet. Searching in background...");
@@ -66,12 +64,11 @@ void networkTask(void * parameter) {
                     WiFi.begin(homeSsid.c_str(), homePass.c_str());
                 }
             } else {
-                // We are finally connected!
                 if (WiFi.getMode() != WIFI_STA) {
                     Serial.println("[WIFI] ✅ Connected to Router! Shutting down Hotspot.");
                     Serial.println("[WIFI] IP Address: " + WiFi.localIP().toString());
                     WiFi.softAPdisconnect(true); 
-                    WiFi.mode(WIFI_STA); // Clean up AP
+                    WiFi.mode(WIFI_STA);
                 }
 
                 if (!timeSynced) {
@@ -99,14 +96,14 @@ void networkTask(void * parameter) {
                             Serial.println("[AUTOPSY] Cloud fetch failed or clean boot.");
                         }
                         http.end();
-                        client.stop(); // 🔥 FIX: Prevents the "Closed SSL" error
-                        autopsyCompleted = true; 
+                        client.stop(); 
+                        autopsyCompleted = true;
                     }
                 }
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(50)); 
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
@@ -119,13 +116,12 @@ void setup() {
     Serial.println("🌊 AquaSync RTOS Booting...");
     Serial.println("=================================");
 
-    // 🔥 COOLING FIX 1: Underclock CPU. Drops heat massively!
-    setCpuFrequencyMhz(80); 
+    // ❌ REMOVED: setCpuFrequencyMhz(80); -> This was crashing the USB connection!
 
     WiFi.disconnect(true);
     delay(500);
 
-    uint64_t chipid = ESP.getEfuseMac(); 
+    uint64_t chipid = ESP.getEfuseMac();
     uint16_t chip = (uint16_t)(chipid >> 32);
     char hwidStr[25];
     snprintf(hwidStr, sizeof(hwidStr), "AQUA-%04X%08X", chip, (uint32_t)chipid);
@@ -146,21 +142,17 @@ void setup() {
 
     if (homeSsid != "") {
         Serial.println("[WIFI] Saved credentials found. Attempting background connection...");
-        // 🔥 THE FIX: Boot into AP+STA mode so Hotspot works immediately 
-        // while the background task searches for the router.
         WiFi.mode(WIFI_AP_STA);
         WiFi.softAP("AquaControl_setup"); 
         
-        // 🔥 COOLING FIX 2: Set TX Power to 15dBm (Strong enough for walls, cooler than max)
-        WiFi.setTxPower(WIFI_POWER_2dBm); 
+        // 🔥 THE THERMAL TEST: Kept TX Power low to isolate the heat source
+        WiFi.setTxPower(WIFI_POWER_2dBm);
         WiFi.begin(homeSsid.c_str(), homePass.c_str());
     } else {
         Serial.println("[WIFI] 📡 No credentials found. Starting Hotspot Setup Mode.");
         WiFi.mode(WIFI_AP);
         WiFi.softAP("AquaControl_setup"); 
     }
-
-    // NO MORE DELAYS HERE! Hardware loop is instantly available.
 
     netManager->begin();
     Serial.println("[SYS] ✅ Network Manager initialized.");

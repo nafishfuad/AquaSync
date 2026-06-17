@@ -164,8 +164,6 @@ private:
                 WiFiClientSecure otaClient; otaClient.setInsecure();
                 httpUpdate.rebootOnUpdate(false); 
                 if (httpUpdate.update(otaClient, fullDownloadUrl) == HTTP_UPDATE_OK) {
-                    
-                    // 🔥 THE CULPRIT DESTROYED: Native Firebase JSON Patch!
                     FirebaseJson fbJson;
                     fbJson.setJsonData("{\"ota_staged\": true}");
                     Firebase.RTDB.updateNode(&_fbdo, "/devices/" + _hwid + "/telemetry", &fbJson);
@@ -231,71 +229,84 @@ public:
     void syncFirebase() {
         if (WiFi.status() == WL_CONNECTED && !_firebaseReady) {
             Serial.println("[FIREBASE] 🌐 Router connection detected! Initializing Cloud Stream...");
-            _config.database_url = FIREBASE_URL;
+            
+            // 🔥 THE FIX: Dynamically strip 'https://' and trailing slashes so the library doesn't reject it!
+            String cleanUrl = FIREBASE_URL;
+            cleanUrl.replace("https://", "");
+            if(cleanUrl.endsWith("/")) cleanUrl.remove(cleanUrl.length() - 1);
+            
+            _config.database_url = cleanUrl;
             _config.signer.test_mode = true; 
             Firebase.reconnectWiFi(true);
             Firebase.begin(&_config, &_auth);
 
             if (Firebase.RTDB.beginStream(&_streamFbdo, "/devices/" + _hwid + "/config")) {
                 Serial.println("[FIREBASE] 📡 Real-Time Stream connected to /config");
+            } else {
+                Serial.println("[FIREBASE] ❌ Stream Error: " + _streamFbdo.errorReason());
             }
             _firebaseReady = true;
         }
 
         if (WiFi.status() != WL_CONNECTED || !_firebaseReady) return;
 
-        if (Firebase.ready() && Firebase.RTDB.readStream(&_streamFbdo)) {
-            if (_streamFbdo.streamAvailable()) handleStreamEvent();
-        }
-
-        unsigned long now = millis();
-        TankSettings& s = _settingsMgr.get();
-        bool needsHeartbeat = (now - _lastHeartbeat > 30000); 
-        
-        bool isAutonomousChange = _shadowInit && (
-            s.isLightOn != _shadow.isLightOn || s.isCO2On != _shadow.isCO2On ||
-            s.isFanOn != _shadow.isFanOn || s.currentBrightness != _shadow.currentBrightness
-        );
-
-        if (_hwEngine.snapshot.pending || !_shadowInit || isAutonomousChange || needsHeartbeat) {
-            
-            // 1. Send Analytics Snapshot (NO MORE HTTP CLIENT!)
-            if (_hwEngine.snapshot.pending) {
-                JsonDocument doc;
-                int totalAct = 0, totalAwk = 0;
-                for(int i=0; i<24; i++) {
-                    doc["hourlyData/" + String(i)] = _hwEngine.snapshot.activeMinutes[i];
-                    doc["awakeData/" + String(i)] = _hwEngine.snapshot.awakeMinutes[i];
-                    totalAct += _hwEngine.snapshot.activeMinutes[i];
-                    totalAwk += _hwEngine.snapshot.awakeMinutes[i];
-                }
-                doc["totalActiveMins"] = totalAct; doc["totalAwakeMins"] = totalAwk;
-                doc["totalLoadShedding"] = _hwEngine.snapshot.totalLS; doc["lightLoadShedding"] = _hwEngine.snapshot.lightLS;
-
-                String out; serializeJson(doc, out);
-                char dateStr[16]; sprintf(dateStr, "%04d-%02d-%02d", _hwEngine.snapshot.year, _hwEngine.snapshot.month, _hwEngine.snapshot.day);
-
-                // 🔥 Native Firebase JSON push
-                FirebaseJson fbJson;
-                fbJson.setJsonData(out);
-                if (Firebase.RTDB.updateNode(&_fbdo, "/devices/" + _hwid + "/analytics/" + String(dateStr), &fbJson)) {
-                    _hwEngine.snapshot.pending = false; 
-                }
+        // Ensure Firebase is ready before pushing
+        if (Firebase.ready()) {
+            if (Firebase.RTDB.readStream(&_streamFbdo)) {
+                if (_streamFbdo.streamAvailable()) handleStreamEvent();
             }
+
+            unsigned long now = millis();
+            TankSettings& s = _settingsMgr.get();
+            bool needsHeartbeat = (now - _lastHeartbeat > 30000); 
             
-            // 2. Send Live Telemetry (NO MORE HTTP CLIENT!)
-            if (!_shadowInit || isAutonomousChange || needsHeartbeat) {
-                String telemetryJson = generateTelemetryJson();
-                if (telemetryJson != "") {
-                    
-                    // 🔥 Native Firebase JSON push
+            bool isAutonomousChange = _shadowInit && (
+                s.isLightOn != _shadow.isLightOn || s.isCO2On != _shadow.isCO2On ||
+                s.isFanOn != _shadow.isFanOn || s.currentBrightness != _shadow.currentBrightness
+            );
+
+            if (_hwEngine.snapshot.pending || !_shadowInit || isAutonomousChange || needsHeartbeat) {
+                
+                if (_hwEngine.snapshot.pending) {
+                    JsonDocument doc;
+                    int totalAct = 0, totalAwk = 0;
+                    for(int i=0; i<24; i++) {
+                        doc["hourlyData/" + String(i)] = _hwEngine.snapshot.activeMinutes[i];
+                        doc["awakeData/" + String(i)] = _hwEngine.snapshot.awakeMinutes[i];
+                        totalAct += _hwEngine.snapshot.activeMinutes[i];
+                        totalAwk += _hwEngine.snapshot.awakeMinutes[i];
+                    }
+                    doc["totalActiveMins"] = totalAct; doc["totalAwakeMins"] = totalAwk;
+                    doc["totalLoadShedding"] = _hwEngine.snapshot.totalLS; doc["lightLoadShedding"] = _hwEngine.snapshot.lightLS;
+
+                    String out; serializeJson(doc, out);
+                    char dateStr[16]; sprintf(dateStr, "%04d-%02d-%02d", _hwEngine.snapshot.year, _hwEngine.snapshot.month, _hwEngine.snapshot.day);
+
                     FirebaseJson fbJson;
-                    fbJson.setJsonData(telemetryJson);
+                    fbJson.setJsonData(out);
                     
-                    if (Firebase.RTDB.updateNode(&_fbdo, "/devices/" + _hwid + "/telemetry", &fbJson)) {
+                    if (Firebase.RTDB.updateNode(&_fbdo, "/devices/" + _hwid + "/analytics/" + String(dateStr), &fbJson)) {
+                        _hwEngine.snapshot.pending = false; 
+                        Serial.println("[FIREBASE] 📊 Analytics Snapshot pushed.");
+                    } else {
+                        Serial.println("[FIREBASE] ❌ Analytics Error: " + _fbdo.errorReason());
+                    }
+                }
+                
+                if (!_shadowInit || isAutonomousChange || needsHeartbeat) {
+                    String telemetryJson = generateTelemetryJson();
+                    if (telemetryJson != "") {
+                        FirebaseJson fbJson;
+                        fbJson.setJsonData(telemetryJson);
+                        
+                        // 🔥 THE TIMING FIX: Reset the timer unconditionally so it doesn't DDOS itself if it fails!
+                        _lastHeartbeat = now;
                         _shadow = s;
                         _shadowInit = true;
-                        _lastHeartbeat = now;
+                        
+                        if (!Firebase.RTDB.updateNode(&_fbdo, "/devices/" + _hwid + "/telemetry", &fbJson)) {
+                            Serial.println("[FIREBASE] ❌ Telemetry Push Error: " + _fbdo.errorReason());
+                        }
                     }
                 }
             }
