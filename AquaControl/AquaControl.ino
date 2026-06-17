@@ -21,6 +21,9 @@ OutageTracker outageTracker(settingsMgr, hwEngine);
 String hwid;
 TaskHandle_t NetworkTaskHandle;
 
+String homeSsid = "";
+String homePass = "";
+
 String generateSecureHWID() {
     Preferences prefs;
     prefs.begin("aqua-ctrl", false);
@@ -34,9 +37,8 @@ String generateSecureHWID() {
             uint32_t randomIndex = esp_random() % 62; 
             salt += charset[randomIndex];
         }
-        hwid = "AQUA" + mac + salt;
+        hwid = "AQUA-" + mac.substring(mac.length() - 4) + salt;
         prefs.putString("secure_hwid", hwid);
-        Serial.println("[SYS] Generated New Secure HWID: " + hwid);
     }
     prefs.end();
     return hwid;
@@ -44,6 +46,8 @@ String generateSecureHWID() {
 
 void networkTask(void * parameter) {
     bool autopsyCompleted = false;
+    bool timeSynced = false;
+    unsigned long lastWifiRetry = 0;
 
     for(;;) {
         if (netManager != nullptr) {
@@ -51,27 +55,54 @@ void networkTask(void * parameter) {
             netManager->syncFirebase(); 
         }
         
-        // 🔥 FIX 1: Use safe HTTP Client for Autopsy to bypass token deadlocks
-        if (!autopsyCompleted && WiFi.status() == WL_CONNECTED) {
-            time_t nowTs = time(nullptr);
-            if (nowTs > 1600000000) { 
-                WiFiClientSecure client;
-                client.setInsecure();
-                HTTPClient http;
-                
-                Serial.println("[AUTOPSY] Fetching last known heartbeat from Cloud...");
-                http.begin(client, FIREBASE_URL + "/devices/" + hwid + "/telemetry/lastHeartbeatTs.json");
-                int httpCode = http.GET();
-                
-                if (httpCode == 200) {
-                    String payload = http.getString();
-                    uint32_t cloudTs = payload.toInt();
-                    outageTracker.performCloudAutopsy(cloudTs);
-                } else {
-                    Serial.println("[AUTOPSY] Cloud fetch failed or clean boot.");
+        // 🔥 THE FIX: Background Router Scanner
+        if (homeSsid != "") {
+            if (WiFi.status() != WL_CONNECTED) {
+                // If the router is still booting, retry every 30 seconds
+                if (millis() - lastWifiRetry > 30000) {
+                    lastWifiRetry = millis();
+                    Serial.println("[WIFI] Router not found yet. Searching in background...");
+                    WiFi.disconnect();
+                    WiFi.begin(homeSsid.c_str(), homePass.c_str());
                 }
-                http.end();
-                autopsyCompleted = true; 
+            } else {
+                // We are finally connected!
+                if (WiFi.getMode() != WIFI_STA) {
+                    Serial.println("[WIFI] ✅ Connected to Router! Shutting down Hotspot.");
+                    Serial.println("[WIFI] IP Address: " + WiFi.localIP().toString());
+                    WiFi.softAPdisconnect(true); 
+                    WiFi.mode(WIFI_STA); // Clean up AP
+                }
+
+                if (!timeSynced) {
+                    Serial.println("[SYS] 🕒 Syncing NTP Time (UTC+6)...");
+                    configTime(6 * 3600, 0, "pool.ntp.org"); 
+                    timeSynced = true;
+                }
+
+                if (!autopsyCompleted) {
+                    time_t nowTs = time(nullptr);
+                    if (nowTs > 1600000000) { 
+                        WiFiClientSecure client;
+                        client.setInsecure();
+                        HTTPClient http;
+                        
+                        Serial.println("[AUTOPSY] Fetching last known heartbeat from Cloud...");
+                        http.begin(client, FIREBASE_URL + "/devices/" + hwid + "/telemetry/lastHeartbeatTs.json");
+                        int httpCode = http.GET();
+                        
+                        if (httpCode == 200) {
+                            String payload = http.getString();
+                            uint32_t cloudTs = payload.toInt();
+                            outageTracker.performCloudAutopsy(cloudTs);
+                        } else {
+                            Serial.println("[AUTOPSY] Cloud fetch failed or clean boot.");
+                        }
+                        http.end();
+                        client.stop(); // 🔥 FIX: Prevents the "Closed SSL" error
+                        autopsyCompleted = true; 
+                    }
+                }
             }
         }
 
@@ -87,6 +118,9 @@ void setup() {
     Serial.println("\n\n=================================");
     Serial.println("🌊 AquaSync RTOS Booting...");
     Serial.println("=================================");
+
+    // 🔥 COOLING FIX 1: Underclock CPU. Drops heat massively!
+    setCpuFrequencyMhz(80); 
 
     WiFi.disconnect(true);
     delay(500);
@@ -106,37 +140,27 @@ void setup() {
 
     Preferences prefs;
     prefs.begin("aqua-ctrl", false);
-    String ssid = prefs.getString("ssid", "");
-    String pass = prefs.getString("pass", "");
+    homeSsid = prefs.getString("ssid", "");
+    homePass = prefs.getString("pass", "");
     prefs.end();
 
-    if (ssid != "") {
-        Serial.println("[WIFI] Attempting to connect to: " + ssid);
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(ssid.c_str(), pass.c_str());
-
-        int timeout = 0;
-        while (WiFi.status() != WL_CONNECTED && timeout < 20) {
-            delay(500);
-            Serial.print(".");
-            timeout++;
-        }
-        Serial.println();
-
-        if (WiFi.status() == WL_CONNECTED) {
-            Serial.println("[WIFI] ✅ Connected to Home Network. IP: " + WiFi.localIP().toString());
-            Serial.println("[SYS] 🕒 Syncing NTP Time (UTC+6)...");
-            configTime(6 * 3600, 0, "pool.ntp.org"); 
-        } else {
-            Serial.println("[WIFI] ❌ Connection failed. Starting Hotspot Setup Mode.");
-            WiFi.mode(WIFI_AP);
-            WiFi.softAP("AquaControl_setup"); 
-        }
+    if (homeSsid != "") {
+        Serial.println("[WIFI] Saved credentials found. Attempting background connection...");
+        // 🔥 THE FIX: Boot into AP+STA mode so Hotspot works immediately 
+        // while the background task searches for the router.
+        WiFi.mode(WIFI_AP_STA);
+        WiFi.softAP("AquaControl_setup"); 
+        
+        // 🔥 COOLING FIX 2: Set TX Power to 15dBm (Strong enough for walls, cooler than max)
+        WiFi.setTxPower(WIFI_POWER_2dBm); 
+        WiFi.begin(homeSsid.c_str(), homePass.c_str());
     } else {
         Serial.println("[WIFI] 📡 No credentials found. Starting Hotspot Setup Mode.");
         WiFi.mode(WIFI_AP);
         WiFi.softAP("AquaControl_setup"); 
     }
+
+    // NO MORE DELAYS HERE! Hardware loop is instantly available.
 
     netManager->begin();
     Serial.println("[SYS] ✅ Network Manager initialized.");

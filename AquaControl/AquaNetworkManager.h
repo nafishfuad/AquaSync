@@ -49,7 +49,6 @@ private:
         doc["localIP"] = WiFi.localIP().toString();
         doc["fw_version"] = FW_VERSION;
         
-        // 🔥 This is the critical pulse the Web App needs to show "Online"
         doc["alive"] = true;
         doc["lastHeartbeatTs"] = time(nullptr);
         
@@ -68,9 +67,8 @@ private:
         doc["liveActiveMins"] = liveMins;
         doc["totalLoadSheddingToday"] = s.totalLoadSheddingToday;
         doc["lightLoadSheddingToday"] = s.lightLoadSheddingToday;
-        
-        doc["lastOutageTotalMins"] = s.lastOutageTotalMins; // 🔥 Push to the Web App
-        doc["lastOutageLightMins"] = s.lastOutageLightMins; // 🔥 Push to the Web App
+        doc["lastOutageTotalMins"] = s.lastOutageTotalMins; 
+        doc["lastOutageLightMins"] = s.lastOutageLightMins; 
 
         String out;
         serializeJson(doc, out);
@@ -166,11 +164,11 @@ private:
                 WiFiClientSecure otaClient; otaClient.setInsecure();
                 httpUpdate.rebootOnUpdate(false); 
                 if (httpUpdate.update(otaClient, fullDownloadUrl) == HTTP_UPDATE_OK) {
-                    WiFiClientSecure client; client.setInsecure(); HTTPClient http;
-                    http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/telemetry.json");
-                    http.addHeader("Content-Type", "application/json");
-                    http.PATCH("{\"ota_staged\": true}");
-                    http.end();
+                    
+                    // 🔥 THE CULPRIT DESTROYED: Native Firebase JSON Patch!
+                    FirebaseJson fbJson;
+                    fbJson.setJsonData("{\"ota_staged\": true}");
+                    Firebase.RTDB.updateNode(&_fbdo, "/devices/" + _hwid + "/telemetry", &fbJson);
                 }
             }
         }
@@ -226,12 +224,15 @@ public:
         _server.on("/api/control", HTTP_POST, [this]() { handleControl(); });
         _server.on("/api/control", HTTP_OPTIONS, [this]() { handlePreflight(); }); 
         _server.begin();
+    }
 
-        if (WiFi.status() == WL_CONNECTED) {
+    void handleClient() { _server.handleClient(); }
+
+    void syncFirebase() {
+        if (WiFi.status() == WL_CONNECTED && !_firebaseReady) {
+            Serial.println("[FIREBASE] 🌐 Router connection detected! Initializing Cloud Stream...");
             _config.database_url = FIREBASE_URL;
-            // 🔥 THE FIX: Restored test_mode so the SDK doesn't deadlock looking for a token
             _config.signer.test_mode = true; 
-            
             Firebase.reconnectWiFi(true);
             Firebase.begin(&_config, &_auth);
 
@@ -239,25 +240,16 @@ public:
                 Serial.println("[FIREBASE] 📡 Real-Time Stream connected to /config");
             }
             _firebaseReady = true;
-        } else {
-            Serial.println("[FIREBASE] ⚠️ Offline Mode (Hotspot). Cloud stream disabled.");
         }
-    }
 
-    void handleClient() { _server.handleClient(); }
-
-    void syncFirebase() {
         if (WiFi.status() != WL_CONNECTED || !_firebaseReady) return;
 
-        // Process incoming stream
         if (Firebase.ready() && Firebase.RTDB.readStream(&_streamFbdo)) {
             if (_streamFbdo.streamAvailable()) handleStreamEvent();
         }
 
         unsigned long now = millis();
         TankSettings& s = _settingsMgr.get();
-        
-        // 🔥 Accelerated Heartbeat: Pushes every 30 seconds for a snappy UI
         bool needsHeartbeat = (now - _lastHeartbeat > 30000); 
         
         bool isAutonomousChange = _shadowInit && (
@@ -266,9 +258,8 @@ public:
         );
 
         if (_hwEngine.snapshot.pending || !_shadowInit || isAutonomousChange || needsHeartbeat) {
-            WiFiClientSecure client; client.setInsecure(); HTTPClient http;
-
-            // 1. Push Analytics Snapshot
+            
+            // 1. Send Analytics Snapshot (NO MORE HTTP CLIENT!)
             if (_hwEngine.snapshot.pending) {
                 JsonDocument doc;
                 int totalAct = 0, totalAwk = 0;
@@ -284,26 +275,28 @@ public:
                 String out; serializeJson(doc, out);
                 char dateStr[16]; sprintf(dateStr, "%04d-%02d-%02d", _hwEngine.snapshot.year, _hwEngine.snapshot.month, _hwEngine.snapshot.day);
 
-                http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/analytics/" + String(dateStr) + ".json");
-                http.addHeader("Content-Type", "application/json");
-                if (http.PATCH(out) > 0) _hwEngine.snapshot.pending = false; 
-                http.end();
+                // 🔥 Native Firebase JSON push
+                FirebaseJson fbJson;
+                fbJson.setJsonData(out);
+                if (Firebase.RTDB.updateNode(&_fbdo, "/devices/" + _hwid + "/analytics/" + String(dateStr), &fbJson)) {
+                    _hwEngine.snapshot.pending = false; 
+                }
             }
             
-            // 2. Push Live Telemetry
+            // 2. Send Live Telemetry (NO MORE HTTP CLIENT!)
             if (!_shadowInit || isAutonomousChange || needsHeartbeat) {
                 String telemetryJson = generateTelemetryJson();
                 if (telemetryJson != "") {
-                    http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/telemetry.json");
-                    http.addHeader("Content-Type", "application/json");
                     
-                    int response = http.PATCH(telemetryJson);
-                    if (response > 0) {
+                    // 🔥 Native Firebase JSON push
+                    FirebaseJson fbJson;
+                    fbJson.setJsonData(telemetryJson);
+                    
+                    if (Firebase.RTDB.updateNode(&_fbdo, "/devices/" + _hwid + "/telemetry", &fbJson)) {
                         _shadow = s;
                         _shadowInit = true;
                         _lastHeartbeat = now;
                     }
-                    http.end();
                 }
             }
         }

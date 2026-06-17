@@ -317,16 +317,22 @@ export const DeviceStore = {
         const awake = toArray(m.awakeData, 24, 1);
         let todayTotal = m.liveActiveMins || 0;
         
-        const lightOutageMins = m.lightLoadSheddingToday || 0;
-        const totalOutageMins = m.totalLoadSheddingToday || 0;
+        const todayLightOutage = m.lightLoadSheddingToday || 0;
+        const todayTotalOutage = m.totalLoadSheddingToday || 0;
 
         const last30Graph = [];
         let monthTotalMins = todayTotal;
         let monthValidDays = 1;
-        
+        // 🔥 FIX: Track total outages across the month
+        let monthLightOutage = todayLightOutage; 
+        let monthTotalOutage = todayTotalOutage;
+
         const last7Graph = [];
         let weekTotalMins = todayTotal;
         let weekValidDays = 1;
+        // 🔥 FIX: Track total outages across the week
+        let weekLightOutage = todayLightOutage;
+        let weekTotalOutage = todayTotalOutage;
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -338,14 +344,22 @@ export const DeviceStore = {
 
             const historicDay = history.find(entry => entry.date === dateStr);
             const activeMins = historicDay ? (historicDay.totalActiveMins || 0) : 0;
+            
+            // 🔥 FIX: Pull historical outages from Firebase DB
+            const histLightOutage = historicDay ? (historicDay.lightLoadShedding || 0) : 0;
+            const histTotalOutage = historicDay ? (historicDay.totalLoadShedding || 0) : 0;
 
             last30Graph.unshift(+(activeMins / 60).toFixed(1));
             monthTotalMins += activeMins;
+            monthLightOutage += histLightOutage;
+            monthTotalOutage += histTotalOutage;
             if (activeMins > 0) monthValidDays++;
 
             if (i <= 7) {
                 last7Graph.unshift(+(activeMins / 60).toFixed(1));
                 weekTotalMins += activeMins;
+                weekLightOutage += histLightOutage;
+                weekTotalOutage += histTotalOutage;
                 if (activeMins > 0) weekValidDays++;
             }
         }
@@ -356,22 +370,23 @@ export const DeviceStore = {
         dev.analyticsData = {
             today: { 
                 totalActive: formatTime(todayTotal), 
-                loadShedding: formatTime(lightOutageMins), 
-                totalBlackout: formatTime(totalOutageMins),
+                loadShedding: formatTime(todayLightOutage), 
+                totalBlackout: formatTime(todayTotalOutage),
                 hourlyGraph: h,
                 awakeData: awake 
             },
             week: { 
                 totalActive: formatTime(weekTotalMins), 
                 avgLight: formatTime(Math.round(weekTotalMins / weekValidDays)), 
-                loadShedding: formatTime(lightOutageMins), 
+                loadShedding: formatTime(weekLightOutage), 
+                totalBlackout: formatTime(weekTotalOutage), // Required for the Modal to show correctly
                 dailyGraph: last7Graph 
             },
             month: { 
                 totalActive: formatTime(monthTotalMins), 
                 avgLight: formatTime(Math.round(monthTotalMins / monthValidDays)), 
-                loadShedding: formatTime(lightOutageMins), 
-                totalBlackout: formatTime(totalOutageMins),
+                loadShedding: formatTime(monthLightOutage), 
+                totalBlackout: formatTime(monthTotalOutage),
                 dailyGraph: last30Graph
             }
         };
