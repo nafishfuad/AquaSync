@@ -235,3 +235,62 @@ export const DeviceStore = {
         }
     }
 };
+
+// --- Add this to the BOTTOM of src/state.js ---
+
+export const IdentityStore = {
+    user: null,
+
+    init() {
+        try {
+            const storedSession = localStorage.getItem("aquasync_session");
+            if (storedSession) {
+                this.user = JSON.parse(storedSession);
+                console.log("🔐 Logged in as:", this.user.email);
+            }
+        } catch (e) {
+            console.error("Auth session corrupted", e);
+            this.logout();
+        }
+    },
+
+    // 🚀 Simulated Firebase Auth Login (Fast UI bridging)
+    async login(email, password) {
+        // Simulate network delay
+        await new Promise(resolve => setTimeout(resolve, 1200));
+
+        if (email && password) {
+            // Create a secure local session
+            this.user = { 
+                email: email, 
+                uid: "user_" + Math.random().toString(36).substr(2, 9),
+                token: "mock_secure_token_123" 
+            };
+            localStorage.setItem("aquasync_session", JSON.stringify(this.user));
+            return { success: true };
+        }
+        return { success: false, message: "Invalid email or password. Please try again." };
+    },
+
+    async signup(email, password) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        if (email.includes("@") && password.length >= 6) {
+            return { success: true };
+        }
+        return { success: false, message: "Password must be at least 6 characters." };
+    },
+
+    async resetPassword(email) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        if (email) {
+            return { success: true, message: "Password reset link sent to " + email };
+        }
+        return { success: false, message: "Please enter a valid email address." };
+    },
+
+    logout() {
+        this.user = null;
+        localStorage.removeItem("aquasync_session");
+        window.location.reload();
+    }
+};

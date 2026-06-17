@@ -1,16 +1,29 @@
 // src/main.js
 
-import { DeviceStore } from './state.js';
+import { DeviceStore, IdentityStore } from './state.js'; // 🔥 Added IdentityStore
 import { API } from './api.js';
 import { buildInsightsPanel, buildControlPanel, buildSystemPanel, buildColorPanel } from './ui-factory.js';
 import { renderEmptyState, renderPairingWizard } from './components/system/PairingWizard.js';
 import { initTopNav } from './components/system/TopNav.js';
 import { debounce } from './utils.js'; 
 import { showOutageModal } from './components/system/OutageModal.js'; 
+import { initAuthModal } from './components/system/AuthModal.js'; // 🔥 Added initAuthModal
 
 const AquaSync = {
     async init() {
         console.log("🌊 AquaSync Ecosystem Initializing...");
+
+        // 🔥 1. Initialize the new Authentication System
+        initAuthModal();
+        IdentityStore.init();
+
+        // 🔥 2. Listen for real-time Firebase socket updates from the dev branch
+        window.addEventListener("aquasync_stream_update", () => {
+            this.setConnectionStatus("cloud");
+            this.renderActiveUI();
+        });
+
+        // 3. Boot the local hardware store
         DeviceStore.init();
         
         if (Object.keys(DeviceStore.devices).length === 0) {
@@ -25,7 +38,7 @@ const AquaSync = {
                 if (nav.id !== "slot-top-nav") nav.classList.add("hidden");
             });
 
-            // 🔥 THE FIX: Force the Top Nav to be visible AND elevate it above the splash overlay!
+            // Force the Top Nav to be visible AND elevate it above the splash overlay!
             const topNav = document.getElementById("slot-top-nav");
             if (topNav) {
                 topNav.classList.remove("hidden");

@@ -16,6 +16,7 @@ import { renderConnection } from './components/system/Connection.js';
 import { renderFirmware } from './components/system/Firmware.js';
 import { renderMaintenance } from './components/system/Maintenance.js';
 import { renderCompanionApp } from './components/system/Companion.js';
+import { renderAccount } from './components/system/Account.js'; // 🔥 ADDED
 
 /**
  * Page 1: Renders the Analytics & Graph Dashboard
@@ -98,6 +99,9 @@ export function buildSystemPanel(device, apiReference, commandHook) {
     if (!systemSlot) return;
 
     systemSlot.innerHTML = "";
+
+    // 🔥 NEW: Render the Account Card at the top
+    renderAccount(systemSlot);
 
     renderConnection(systemSlot, device.network, () => {
         if (confirm("Reset Wi-Fi stack? The controller will drop back to local hotspot configuration.")) {

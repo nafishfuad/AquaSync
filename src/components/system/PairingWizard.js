@@ -1,5 +1,5 @@
 // src/components/system/PairingWizard.js
-import { DeviceStore } from '../../state.js';
+import { DeviceStore, IdentityStore } from '../../state.js'; // 🔥 ADDED IdentityStore
 import { API } from '../../api.js';
 
 let heartbeatInterval = null;
@@ -157,10 +157,27 @@ export function renderEmptyState() {
         });
 
         const demoBtn = document.createElement("button");
-        demoBtn.className = "w-full bg-[#121212] border border-gray-700 hover:bg-gray-800 hover:text-white text-gray-300 font-bold py-3.5 rounded-xl text-[11px] uppercase tracking-widest transition-all active:scale-95 shadow-sm mt-3 block text-center";
+        demoBtn.className = "w-full max-w-[280px] mx-auto bg-[#121212] border border-gray-700 hover:bg-gray-800 hover:text-white text-gray-300 font-bold py-3.5 rounded-xl text-[11px] uppercase tracking-widest transition-all active:scale-95 shadow-sm mt-3 block text-center";
         demoBtn.innerHTML = "🎮 SIMULATE DEMO TANK";
         demoBtn.onclick = () => setupDemoDevice();
         
         startBtn.parentNode.insertBefore(demoBtn, startBtn.nextSibling);
+
+        // 🔥 NEW: Inject Cloud Login Button if NOT logged in
+        if (!IdentityStore.user) {
+            const loginBtn = document.createElement("button");
+            loginBtn.className = "w-full max-w-[280px] bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500 hover:text-white text-purple-400 font-bold py-3.5 rounded-xl text-[11px] uppercase tracking-widest transition-all active:scale-95 mt-3 block mx-auto shadow-[0_0_15px_rgba(168,85,247,0.15)]";
+            loginBtn.innerText = "Log In to Cloud";
+            loginBtn.onclick = () => {
+                if (window.openAuthModal) window.openAuthModal();
+            };
+            demoBtn.parentNode.insertBefore(loginBtn, demoBtn.nextSibling);
+        } else {
+            // If they are logged in, show a beautiful Synced badge instead
+            const userBox = document.createElement("div");
+            userBox.className = "mt-5 text-center text-[10px] text-gray-500 font-bold tracking-widest uppercase border border-gray-800 bg-[#121212] rounded-xl py-2 px-4 max-w-[280px] mx-auto shadow-inner";
+            userBox.innerHTML = `Synced to Cloud <br><span class="text-aqua lowercase tracking-normal text-xs">${IdentityStore.user.email}</span>`;
+            demoBtn.parentNode.insertBefore(userBox, demoBtn.nextSibling);
+        }
     }
 }
