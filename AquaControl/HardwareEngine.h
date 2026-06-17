@@ -280,12 +280,16 @@ public:
 
         if (timeValid && (nowMillis - _lastBreadcrumbTick >= 60000)) {
             _lastBreadcrumbTick = nowMillis;
+            
+            // 🔥 NEW: Read internal silicon temperature and print to Serial
+            float coreTemp = temperatureRead();
+            Serial.printf("[HW] 🌡️ ESP32 Core Temperature: %.1f°C\n", coreTemp);
+
             int currentDayOfYear = timeinfo->tm_yday; 
             
             if (settings.lastTrackedDay != 0 && settings.lastTrackedDay != currentDayOfYear) {
                 
-                // 🔥 FIX 1: Safely pack yesterday's data into the snapshot before wiping it!
-                time_t yesterday = nowTime - 86400; // Subtract 24 hours to get yesterday's date
+                time_t yesterday = nowTime - 86400; 
                 struct tm* ytm = localtime(&yesterday);
                 
                 snapshot.year = ytm->tm_year + 1900;
@@ -298,15 +302,18 @@ public:
                     snapshot.activeMinutes[i] = settings.activeMinutesToday[i];
                     snapshot.awakeMinutes[i] = settings.awakeMinutesToday[i];
                     
-                    // Now it is safe to wipe the live RAM for the new day
                     settings.activeMinutesToday[i] = 0; 
                     settings.awakeMinutesToday[i] = 0; 
                 }
                 
-                snapshot.pending = true; // Tell the Network Manager to upload this!
+                snapshot.pending = true; 
 
                 settings.totalLoadSheddingToday = 0; 
                 settings.lightLoadSheddingToday = 0;
+                
+                settings.lastOutageTotalMins = 0;
+                settings.lastOutageLightMins = 0;
+
                 settings.lastTrackedDay = currentDayOfYear;
                 saveAnalyticsVault(settings);
                 

@@ -3,9 +3,9 @@
 
 #include <Arduino.h>
 
-const String FW_VERSION = "v1.1.0"; 
-const int CURRENT_SCHEMA_VERSION = 3;
-const String DEVICE_MODEL = "Aqua-Base";
+const String FW_VERSION = "v1.5.0"; 
+const int CURRENT_SCHEMA_VERSION = 5;
+const String DEVICE_MODEL = "AS-Base";
 const String FIREBASE_URL = "https://aqua-fish-controller-default-rtdb.asia-southeast1.firebasedatabase.app";
 
 const int PIN_RELAY = 2;  
@@ -45,7 +45,11 @@ struct TankSettings {
     uint16_t awakeMinutesToday[24]; 
     int totalLoadSheddingToday;     
     int lightLoadSheddingToday;     
-    int lastTrackedDay;             
+    int lastTrackedDay;      
+
+    // 🔥 NEW: Volatile metrics specifically for the UI Alert
+    int lastOutageTotalMins;
+    int lastOutageLightMins;
 };
 
 // 🔥 FIX 1: The safe vault for midnight data transfer

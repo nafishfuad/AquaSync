@@ -84,17 +84,30 @@ export function renderOverview(container, device) {
     clone.querySelector(".tpl-recovery-val").parentElement.classList.add("pt-3", "border-t", "border-gray-800/40");
 
     // --- 3. The Smart Load Shedding Warning ---
-    const loadSheddingText = device.analyticsData?.today?.loadShedding || "00h 00m";
-    const totalBlackoutText = device.analyticsData?.today?.totalBlackout || "00h 00m";
-    const rawTotalOutage = m.totalLoadSheddingToday || 0;
+    
+    // We use the cumulative total to detect IF a *new* outage happened
+    const cumulativeOutage = m.totalLoadSheddingToday || 0;
+    
+    // But we DISPLAY the isolated volatile data of the *latest* specific outage
+    const lastOutageTotalMins = m.lastOutageTotalMins || 0;
+    const lastOutageLightMins = m.lastOutageLightMins || 0;
+    
+    const formatOutageDuration = (mins) => {
+        const h = Math.floor(mins / 60).toString().padStart(2, '0');
+        const mm = (mins % 60).toString().padStart(2, '0');
+        return `${h}h ${mm}m`;
+    };
+
+    const latestBlackoutText = formatOutageDuration(lastOutageTotalMins);
+    const latestLostLightText = formatOutageDuration(lastOutageLightMins);
 
     // 🔥 SMART DISMISS LOGIC: Generate a unique storage key for today and this specific tank
     const todayDate = new Date().toDateString();
     const ackKey = `ack_outage_${device.hwid}_${todayDate}`;
     const ackedOutage = parseInt(localStorage.getItem(ackKey)) || 0;
 
-    // Show banner ONLY if an outage exists AND it has increased since the user last dismissed it
-    if (rawTotalOutage > 0 && rawTotalOutage > ackedOutage) {
+    // Show banner ONLY if a specific outage exists AND cumulative total has increased since last dismiss
+    if (lastOutageTotalMins > 0 && cumulativeOutage > ackedOutage) {
         const blackoutWarningHTML = `
             <div class="mt-3 rounded-xl bg-red-900/10 border border-red-900/40 transition-colors flex justify-between items-stretch overflow-hidden group" id="btn-blackout-banner">
                 
@@ -104,7 +117,7 @@ export function renderOverview(container, device) {
                         Power Outage Detected
                     </p>
                     <div class="text-[12px] text-gray-300 font-medium flex items-center">
-                        Disrupted Light: <span class="ml-1">${styleTimeStr(loadSheddingText, "text-red-400")}</span>
+                        Disrupted Light: <span class="ml-1">${styleTimeStr(latestLostLightText, "text-red-400")}</span>
                     </div>
                 </div>
                 
@@ -123,7 +136,10 @@ export function renderOverview(container, device) {
         
         btnDismiss.addEventListener("click", (e) => {
             e.stopPropagation(); // Stop the modal from opening
-            localStorage.setItem(ackKey, rawTotalOutage); // Save current outage mins
+            
+            // Store the CUMULATIVE outage mins so we know if a new one occurs later today!
+            localStorage.setItem(ackKey, cumulativeOutage); 
+            
             bannerContainer.style.opacity = "0";
             setTimeout(() => bannerContainer.remove(), 300); // Smooth animation out
         });
@@ -133,9 +149,9 @@ export function renderOverview(container, device) {
         clickArea.addEventListener("click", () => {
             window.showOutageModal(
                 "Power Outage", 
-                "Today's Report", 
-                totalBlackoutText, 
-                loadSheddingText
+                "Latest Event Report", 
+                latestBlackoutText, 
+                latestLostLightText
             );
         });
     }

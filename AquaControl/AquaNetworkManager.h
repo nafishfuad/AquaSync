@@ -48,8 +48,11 @@ private:
         doc["v"] = CURRENT_SCHEMA_VERSION;
         doc["localIP"] = WiFi.localIP().toString();
         doc["fw_version"] = FW_VERSION;
+        
+        // 🔥 This is the critical pulse the Web App needs to show "Online"
         doc["alive"] = true;
         doc["lastHeartbeatTs"] = time(nullptr);
+        
         doc["isLightOn"] = s.isLightOn;
         doc["isCO2On"] = s.isCO2On;
         doc["isFanOn"] = s.isFanOn;
@@ -65,6 +68,9 @@ private:
         doc["liveActiveMins"] = liveMins;
         doc["totalLoadSheddingToday"] = s.totalLoadSheddingToday;
         doc["lightLoadSheddingToday"] = s.lightLoadSheddingToday;
+        
+        doc["lastOutageTotalMins"] = s.lastOutageTotalMins; // 🔥 Push to the Web App
+        doc["lastOutageLightMins"] = s.lastOutageLightMins; // 🔥 Push to the Web App
 
         String out;
         serializeJson(doc, out);
@@ -221,9 +227,11 @@ public:
         _server.on("/api/control", HTTP_OPTIONS, [this]() { handlePreflight(); }); 
         _server.begin();
 
-        // 🔥 THE FIX: ONLY start Firebase if we are actually connected to the Internet!
         if (WiFi.status() == WL_CONNECTED) {
             _config.database_url = FIREBASE_URL;
+            // 🔥 THE FIX: Restored test_mode so the SDK doesn't deadlock looking for a token
+            _config.signer.test_mode = true; 
+            
             Firebase.reconnectWiFi(true);
             Firebase.begin(&_config, &_auth);
 
@@ -232,23 +240,26 @@ public:
             }
             _firebaseReady = true;
         } else {
-            Serial.println("[FIREBASE] ⚠️ Offline Mode (Hotspot). Cloud stream disabled to preserve CPU.");
+            Serial.println("[FIREBASE] ⚠️ Offline Mode (Hotspot). Cloud stream disabled.");
         }
     }
 
     void handleClient() { _server.handleClient(); }
 
     void syncFirebase() {
-        // 🔥 THE FIX: Immediately abort Firebase operations if we drop offline
-        if (WiFi.status() != WL_CONNECTED || !_firebaseReady || !Firebase.ready()) return;
+        if (WiFi.status() != WL_CONNECTED || !_firebaseReady) return;
 
-        if (Firebase.RTDB.readStream(&_streamFbdo)) {
+        // Process incoming stream
+        if (Firebase.ready() && Firebase.RTDB.readStream(&_streamFbdo)) {
             if (_streamFbdo.streamAvailable()) handleStreamEvent();
         }
 
         unsigned long now = millis();
         TankSettings& s = _settingsMgr.get();
-        bool needsHeartbeat = (now - _lastHeartbeat > 60000);
+        
+        // 🔥 Accelerated Heartbeat: Pushes every 30 seconds for a snappy UI
+        bool needsHeartbeat = (now - _lastHeartbeat > 30000); 
+        
         bool isAutonomousChange = _shadowInit && (
             s.isLightOn != _shadow.isLightOn || s.isCO2On != _shadow.isCO2On ||
             s.isFanOn != _shadow.isFanOn || s.currentBrightness != _shadow.currentBrightness
@@ -257,6 +268,7 @@ public:
         if (_hwEngine.snapshot.pending || !_shadowInit || isAutonomousChange || needsHeartbeat) {
             WiFiClientSecure client; client.setInsecure(); HTTPClient http;
 
+            // 1. Push Analytics Snapshot
             if (_hwEngine.snapshot.pending) {
                 JsonDocument doc;
                 int totalAct = 0, totalAwk = 0;
@@ -278,12 +290,15 @@ public:
                 http.end();
             }
             
+            // 2. Push Live Telemetry
             if (!_shadowInit || isAutonomousChange || needsHeartbeat) {
                 String telemetryJson = generateTelemetryJson();
                 if (telemetryJson != "") {
                     http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/telemetry.json");
                     http.addHeader("Content-Type", "application/json");
-                    if (http.PATCH(telemetryJson) > 0) {
+                    
+                    int response = http.PATCH(telemetryJson);
+                    if (response > 0) {
                         _shadow = s;
                         _shadowInit = true;
                         _lastHeartbeat = now;

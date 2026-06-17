@@ -1,19 +1,29 @@
 // src/components/system/TopNav.js
 
 import { DeviceStore } from '../../state.js';
-import { renderAboutModal } from './AboutModal.js';
-import { renderPairingWizard, renderEmptyState, setupDemoDevice } from './PairingWizard.js';
+import { renderPairingWizard } from './PairingWizard.js';
+
+// 🔥 HELPER: Fast background network scanner
+async function pingUrl(url) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 2000);
+    try {
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(id);
+        return res.ok;
+    } catch (e) {
+        clearTimeout(id);
+        return false;
+    }
+}
 
 export function initTopNav() {
     const slot = document.getElementById("slot-top-nav");
     if (!slot) return;
 
     const savedTheme = localStorage.getItem("aquasync_theme") || "dark";
-    if (savedTheme === "light") {
-        document.body.classList.add("light-theme");
-    } else {
-        document.body.classList.remove("light-theme");
-    }
+    if (savedTheme === "light") document.body.classList.add("light-theme");
+    else document.body.classList.remove("light-theme");
 
     const activeDevice = DeviceStore.getActiveDevice();
     const allDevices = DeviceStore.devices;
@@ -27,143 +37,163 @@ export function initTopNav() {
     };
 
     const hideStatusIcons = activeDevice ? "" : "hidden";
+    const deviceName = activeDevice ? activeDevice.name : "AquaSync Ecosystem";
 
     slot.innerHTML = `
-        <div class="pointer-events-auto w-full max-w-[1200px] bg-cardbg border border-gray-700/50 shadow-md rounded-2xl px-4 py-3 flex justify-between items-center transition-colors duration-300">
-            <div class="flex items-center space-x-3">
-                <div class="w-8 h-8 bg-gradient-to-br from-aqua to-blue-600 rounded-lg flex items-center justify-center shadow-[0_0_10px_rgba(0,242,254,0.3)]">
-                    <span class="text-sm">🌊</span>
+        <div class="pointer-events-auto w-full max-w-[1200px] bg-cardbg border border-gray-700/50 rounded-2xl p-4 flex items-center justify-between shadow-2xl backdrop-blur-md relative z-50">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-[#121212] rounded-xl flex items-center justify-center border border-gray-800 shadow-inner">
+                    <span class="text-xl">🌊</span>
                 </div>
-                <div class="flex flex-col justify-center">
-                    <h1 class="text-white font-bold tracking-wider uppercase text-sm leading-tight">AquaSync</h1>
-                    <span class="text-[8px] text-aqua font-bold tracking-widest uppercase">Ecosystem</span>
+                <div>
+                    <h1 class="text-white font-bold text-sm tracking-widest flex items-center gap-2">
+                        ${deviceName}
+                    </h1>
+                    <div id="nav-status-indicator" class="${hideStatusIcons} flex items-center gap-2 mt-0.5 transition-all">
+                        <span class="relative flex h-2 w-2" id="nav-status-ping-container">
+                            <span id="nav-status-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-gray-500 opacity-75 hidden"></span>
+                            <span id="nav-status-dot" class="relative inline-flex rounded-full h-2 w-2 bg-gray-500"></span>
+                        </span>
+                        <span id="nav-status-text" class="text-[9px] uppercase font-bold text-gray-500 tracking-widest">Scanning...</span>
+                    </div>
                 </div>
             </div>
 
-            <div class="flex items-center space-x-3 text-gray-400">
-                <button id="btn-theme-toggle" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 transition-colors active:scale-95 group">
-                    <svg id="icon-sun" class="w-4 h-4 ${savedTheme === 'dark' ? 'block' : 'hidden'} group-hover:text-amber-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                    <svg id="icon-moon" class="w-4 h-4 ${savedTheme === 'light' ? 'block' : 'hidden'} group-hover:text-aqua transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+            <div class="relative">
+                <button id="btn-nav-dropdown" class="p-2 bg-[#121212] border border-gray-800 rounded-lg hover:border-gray-600 transition-colors">
+                    <svg id="dropdown-arrow" class="w-5 h-5 text-gray-400 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                 </button>
                 
-                <button id="btn-nav-info" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 transition-colors border border-gray-700 active:scale-95">
-                    <span class="text-xs font-bold">i</span>
-                </button>
-                
-                <div class="flex items-center justify-center w-6 h-6 ml-1 relative ${hideStatusIcons}">
-                    <div class="relative flex h-2.5 w-2.5 items-center justify-center">
-                        <span id="ui-top-ping" class="absolute inline-flex h-full w-full rounded-full opacity-75 hidden"></span>
-                        <span id="ui-top-dot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-gray-500 transition-colors duration-300"></span>
-                    </div>
-                    <div id="ui-status-spinner" class="hidden absolute w-4 h-4 border-2 border-aqua border-t-transparent rounded-full animate-spin"></div>
-                    
-                    <div id="ui-status-check" class="hidden absolute text-aqua flex items-center justify-center">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
-                        </svg>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="pointer-events-auto w-full max-w-[1200px] bg-cardbg/90 backdrop-blur-xl border border-gray-700/50 shadow-md rounded-2xl relative mt-3 transition-colors duration-300 ${activeDevice ? '' : 'hidden'}">
-            
-            <div id="device-dropdown-trigger" class="px-4 py-3 flex justify-between items-center cursor-pointer active:bg-gray-800/50 rounded-2xl transition-colors">
-                <div class="flex items-center space-x-3">
-                    <span class="text-2xl drop-shadow-md">🐠</span>
-                    <div class="flex flex-col">
-                        <span class="text-[9px] text-gray-500 uppercase tracking-widest font-bold">Active Device</span>
-                        <span id="ui-active-name" class="text-white font-bold text-sm tracking-wide">${activeDevice ? activeDevice.name : ''}</span>
-                    </div>
-                </div>
-                <div class="flex items-center space-x-3">
-                    <span id="ui-active-model" class="text-[9px] text-aqua bg-aqua/10 border border-aqua/20 px-2 py-1 rounded-full font-bold tracking-widest uppercase">${activeDevice ? activeDevice.model : ''}</span>
-                    <span id="dropdown-arrow" class="text-gray-500 transition-transform duration-300">▼</span>
-                </div>
-            </div>
-
-            <div id="device-dropdown-menu" class="hidden absolute top-[110%] left-0 w-full bg-cardbg border border-gray-700/50 shadow-2xl rounded-2xl p-3 z-[250] flex-col space-y-2 transition-colors duration-300">
-                ${Object.values(allDevices).map(dev => `
-                    <div class="bg-cardbg border border-gray-700/50 rounded-xl p-3 flex justify-between items-center ${activeDevice && dev.hwid === activeDevice.hwid ? 'border-aqua/50 bg-aqua/5' : ''} transition-colors duration-300">
-                        <div class="flex items-center space-x-3">
-                            <span class="text-xl">🐠</span>
-                            <div class="flex flex-col">
-                                <span class="text-sm font-bold text-white">${dev.name}</span>
-                                <span class="text-[8px] text-gray-500 uppercase tracking-widest">${formatHwidDisplay(dev.hwid)}</span>
-                            </div>
-                        </div>
-                        <div class="flex space-x-2">
-                            ${activeDevice && dev.hwid !== activeDevice.hwid ? `
-                                <button class="btn-switch-device bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500 hover:text-white px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all active:scale-95" data-hwid="${dev.hwid}">Select</button>
-                            ` : `<span class="px-3 py-1.5 text-[9px] font-bold text-aqua uppercase tracking-widest">Active</span>`}
-                            <button class="btn-remove-device bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500 hover:text-white px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all active:scale-95" data-hwid="${dev.hwid}">Remove</button>
+                <div id="nav-menu" class="hidden absolute right-0 mt-3 w-56 bg-cardbg border border-gray-700 rounded-xl shadow-2xl flex-col overflow-hidden z-[999]">
+                    <div class="p-3 border-b border-gray-800 bg-[#121212]/50">
+                        <p class="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-2">Your Ecosystem</p>
+                        <div class="space-y-1">
+                            ${Object.values(allDevices).map(d => `
+                                <button data-hwid="${d.hwid}" class="btn-switch-device w-full text-left px-3 py-2 rounded-lg text-xs font-semibold ${d.hwid === activeDevice?.hwid ? 'bg-aqua/10 text-aqua' : 'text-gray-400 hover:bg-gray-800 hover:text-white'} transition-colors">
+                                    ${d.name} <span class="text-[9px] opacity-50 ml-1">(${formatHwidDisplay(d.hwid)})</span>
+                                </button>
+                            `).join('')}
                         </div>
                     </div>
-                `).join('')}
-                
-                <button id="btn-add-new-device" class="w-full bg-cardbg border border-gray-700/50 hover:border-gray-500 text-aqua font-bold py-3 rounded-xl text-[10px] uppercase tracking-widest transition-all active:scale-95 mt-2 flex items-center justify-center">
-                    <span class="text-lg mr-2">+</span> Add A New Device
-                </button>
+                    <button id="btn-add-new-device" class="w-full text-left px-4 py-3 text-xs font-bold text-aqua hover:bg-gray-800 transition-colors flex items-center gap-2">
+                        <span class="text-lg">+</span> Add New Tank
+                    </button>
+                    ${activeDevice ? `
+                    <button data-hwid="${activeDevice.hwid}" class="btn-remove-device w-full text-left px-4 py-3 text-xs font-bold text-red-400 border-t border-gray-800 hover:bg-red-500/10 transition-colors flex items-center gap-2">
+                        <span class="text-lg">×</span> Remove Tank
+                    </button>
+                    ` : ''}
+                </div>
             </div>
         </div>
     `;
 
-    document.getElementById("btn-theme-toggle").onclick = () => {
-        const isLight = document.body.classList.toggle("light-theme");
-        localStorage.setItem("aquasync_theme", isLight ? "light" : "dark");
-        
-        document.getElementById("icon-sun").classList.toggle("hidden", isLight);
-        document.getElementById("icon-sun").classList.toggle("block", !isLight);
-        
-        document.getElementById("icon-moon").classList.toggle("hidden", !isLight);
-        document.getElementById("icon-moon").classList.toggle("block", isLight);
+    // Dropdown Logic
+    const trigger = document.getElementById("btn-nav-dropdown");
+    const menu = document.getElementById("nav-menu");
+    const arrow = document.getElementById("dropdown-arrow");
 
-        if (window.AquaSync && window.AquaSync.renderActiveUI) {
-            window.AquaSync.renderActiveUI();
-        }
+    trigger.onclick = () => {
+        menu.classList.toggle("hidden");
+        menu.classList.toggle("flex");
+        arrow.style.transform = menu.classList.contains("hidden") ? "rotate(0deg)" : "rotate(180deg)";
     };
 
-    // 🔥 THE FIX: Attached globally so it works even if you have 0 devices
-    document.getElementById("btn-nav-info").onclick = renderAboutModal;
+    document.getElementById("btn-add-new-device").onclick = () => {
+        menu.classList.add("hidden");
+        menu.classList.remove("flex");
+        renderPairingWizard(() => window.location.reload());
+    };
 
-    if (activeDevice) {
-        const trigger = document.getElementById("device-dropdown-trigger");
-        const menu = document.getElementById("device-dropdown-menu");
-        const arrow = document.getElementById("dropdown-arrow");
+    document.querySelectorAll(".btn-switch-device").forEach(btn => {
+        btn.onclick = (e) => {
+            const targetHwid = e.currentTarget.getAttribute("data-hwid");
+            DeviceStore.setActiveDevice(targetHwid);
+            window.location.reload(); 
+        };
+    });
 
-        trigger.onclick = () => {
-            menu.classList.toggle("hidden");
-            menu.classList.toggle("flex");
-            arrow.style.transform = menu.classList.contains("hidden") ? "rotate(0deg)" : "rotate(180deg)";
+    document.querySelectorAll(".btn-remove-device").forEach(btn => {
+        btn.onclick = (e) => {
+            if (confirm("Are you sure you want to remove this device from the app?")) {
+                const targetHwid = e.currentTarget.getAttribute("data-hwid");
+                DeviceStore.removeDevice(targetHwid);
+                window.location.reload();
+            }
+        };
+    });
+
+    // ========================================================
+    // 🔥 THE AUTONOMOUS CONNECTION ENGINE
+    // ========================================================
+    if (!window.navWatchdogActive) {
+        window.navWatchdogActive = true;
+        
+        const updateStatus = (mode) => {
+            const ping = document.getElementById("nav-status-ping");
+            const dot = document.getElementById("nav-status-dot");
+            const text = document.getElementById("nav-status-text");
+            if (!ping || !dot || !text) return;
+
+            // Strip previous colors
+            ping.className = "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75";
+            dot.className = "relative inline-flex rounded-full h-2 w-2";
+            text.className = "text-[9px] uppercase font-bold tracking-widest";
+
+            if (mode === "cloud") {
+                ping.classList.add("bg-purple-500");
+                dot.classList.add("bg-purple-500");
+                text.classList.add("text-purple-400");
+                text.innerText = "Cloud Sync";
+            } else if (mode === "local") {
+                ping.classList.add("bg-aqua");
+                dot.classList.add("bg-aqua");
+                text.classList.add("text-aqua");
+                text.innerText = "Local Wi-Fi";
+            } else if (mode === "hotspot") {
+                ping.classList.add("bg-green-500");
+                dot.classList.add("bg-green-500");
+                text.classList.add("text-green-400");
+                text.innerText = "ESP Hotspot";
+            } else {
+                ping.classList.add("hidden"); // Kill animation
+                dot.classList.add("bg-gray-600");
+                text.classList.add("text-gray-500");
+                text.innerText = "Offline";
+            }
         };
 
-        document.getElementById("btn-add-new-device").onclick = () => {
-            menu.classList.add("hidden");
-            menu.classList.remove("flex");
-            renderPairingWizard(() => window.location.reload());
-        };
+        // Poll the networks every 4 seconds to adjust colors
+        setInterval(async () => {
+            const dev = DeviceStore.getActiveDevice();
+            if (!dev) {
+                updateStatus("offline");
+                return;
+            }
 
-        document.querySelectorAll(".btn-switch-device").forEach(btn => {
-            btn.onclick = (e) => {
-                const targetHwid = e.target.getAttribute("data-hwid");
-                DeviceStore.setActiveDevice(targetHwid);
-                window.location.reload(); 
-            };
-        });
+            const now = Math.floor(Date.now() / 1000);
+            const hb = dev.metrics?.lastHeartbeatTs || 0;
+            
+            // If heartbeat is within 45 seconds (30s pulse + 15s delay buffer), cloud is alive!
+            const isCloudDead = (now - hb >= 45);
 
-        document.querySelectorAll(".btn-remove-device").forEach(btn => {
-            btn.onclick = (e) => {
-                if (confirm("Are you sure you want to remove this device from the app?")) {
-                    const targetHwid = e.target.getAttribute("data-hwid");
-                    DeviceStore.removeDevice(targetHwid);
-                    
-                    if (Object.keys(DeviceStore.devices).length === 0) {
-                        window.location.reload();
-                    } else {
-                        window.location.reload();
-                    }
+            if (isCloudDead) {
+                // 1. Check if we are directly connected to the ESP's Hotspot (Green)
+                if (await pingUrl("http://192.168.4.1/info")) {
+                    updateStatus("hotspot");
+                } 
+                // 2. Check if we can talk to the ESP via Local Home Wi-Fi (Aqua)
+                else if (dev.localIP && await pingUrl(`http://${dev.localIP}/info`)) {
+                    updateStatus("local");
+                } 
+                // 3. Completely disconnected (Grey)
+                else {
+                    updateStatus("offline");
                 }
-            };
-        });
+            } else {
+                // Connected to Firebase (Purple)
+                updateStatus("cloud");
+            }
+        }, 4000);
     }
 }

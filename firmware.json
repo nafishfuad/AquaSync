@@ -1,6 +1,6 @@
 {
-  "AS-Standard": {
-    "version": "v1.0.0"
+  "AS-Base": {
+    "version": "v1.5.0"
   },
   "CompanionApp": {
     "version": "v1.0.0",
