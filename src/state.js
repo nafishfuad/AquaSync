@@ -226,6 +226,12 @@ export const DeviceStore = {
         if (newMetrics) {
             this.devices[hwid].metrics = { ...this.devices[hwid].metrics, ...newMetrics };
 
+            // Explicitly sync the firmware version from the device API to the UI Firmware State
+            if (newMetrics.fw_version) {
+                if (!this.devices[hwid].firmware) this.devices[hwid].firmware = { current: "v1.0.0", latest: "Checking...", downloadUrl: "" };
+                this.devices[hwid].firmware.current = newMetrics.fw_version;
+            }
+
             if (newMetrics.hourlyData || newMetrics.dailyData) {
                 const h = toArray(newMetrics.hourlyData, 24, 0);
                 const d = toArray(newMetrics.dailyData, 30, 0);
