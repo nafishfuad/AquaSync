@@ -244,14 +244,14 @@ export const DeviceStore = {
 
                 let todayTotal = 0;
                 for(let i=0; i<24; i++) {
-                    todayTotal += newMetrics.activeData[i] || 0;
+                    todayTotal += h[i] || 0;
                 }
 
                 // Inject live active minutes into today's graph
                 const currentHour = new Date().getHours();
                 if (newMetrics.liveActiveMins > todayTotal) {
                     let sumOfFirebaseHours = 0;
-                    for(let i=0; i<24; i++) if (i !== currentHour) sumOfFirebaseHours += newMetrics.activeData[i] || 0;
+                    for(let i=0; i<24; i++) if (i !== currentHour) sumOfFirebaseHours += h[i] || 0;
                     const unpushedMinutes = newMetrics.liveActiveMins - sumOfFirebaseHours;
                     h[currentHour] += unpushedMinutes;
                     if (h[currentHour] > 60) h[currentHour] = 60; 
