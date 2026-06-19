@@ -109,9 +109,13 @@ export function renderOverview(container, device) {
             const m = (mins % 60).toString().padStart(2, '0');
             return `${h}h ${m}m`;
         };
+        const dynamicHouseOutage = formatMins(currentOutageMins);
+        // We'll estimate lost light as the same as house outage if we don't know exactly
+        const dynamicLostLight = formatMins(currentOutageMins);
+        
         const blackoutWarningHTML = `
             <div class="mt-3 rounded-xl bg-red-900/20 border border-red-500/50 animate-pulse transition-colors flex justify-between items-stretch overflow-hidden group">
-                <div class="p-4 flex-1 cursor-pointer hover:bg-red-900/30 transition-colors" onclick="window.showOutageModal('Power Outage', 'Today\\'s Report', '${totalBlackoutText}', '${loadSheddingText}')">
+                <div class="p-4 flex-1 cursor-pointer hover:bg-red-900/30 transition-colors" onclick="window.showOutageModal('Power Outage', 'Ongoing Outage', '${dynamicHouseOutage}', '${dynamicLostLight}')">
                     <p class="text-[10px] font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5 mb-1">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
                         CURRENTLY LOAD SHEDDING
