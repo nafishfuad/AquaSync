@@ -27,12 +27,12 @@ export function renderOverview(container, device) {
 
     const styleTimeStr = (str, colorClass = "text-white") => {
         const hmMatch = str.match(/(\d{2})h (\d{2})m/);
-        if (hmMatch) return `<div class="whitespace-nowrap"><span class="text-2xl font-bold ${colorClass} tracking-tight">${hmMatch[1]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">h</span><span class="text-2xl font-bold ${colorClass} tracking-tight">${hmMatch[2]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">m</span></div>`;
+        if (hmMatch) return `<div class="whitespace-nowrap"><span class="text-xl font-bold ${colorClass} tracking-tight">${hmMatch[1]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">h</span><span class="text-xl font-bold ${colorClass} tracking-tight">${hmMatch[2]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">m</span></div>`;
         
         const mMatch = String(str).match(/^(\d+)m?$/);
-        if (mMatch) return `<div class="whitespace-nowrap"><span class="text-2xl font-bold ${colorClass} tracking-tight">${String(mMatch[1]).padStart(2, '0')}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">m</span></div>`;
+        if (mMatch) return `<div class="whitespace-nowrap"><span class="text-xl font-bold ${colorClass} tracking-tight">${String(mMatch[1]).padStart(2, '0')}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">m</span></div>`;
         
-        return `<div class="whitespace-nowrap text-2xl font-bold ${colorClass}">${str}</div>`;
+        return `<div class="whitespace-nowrap text-xl font-bold ${colorClass}">${str}</div>`;
     };
 
     // --- 1. Dynamic Top Status Grid ---
@@ -74,8 +74,8 @@ export function renderOverview(container, device) {
     midGrid.classList.remove("gap-y-6", "pt-6", "gap-y-4", "pt-4");
     midGrid.classList.add("gap-y-3", "pt-3");
 
-    clone.querySelector(".tpl-sunrise-val").innerHTML = `<span class="text-lg font-bold text-gray-200">${formatTime(m.startTime)}</span>`;
-    clone.querySelector(".tpl-sunset-val").innerHTML = `<span class="text-lg font-bold text-gray-200">${calcSunset(m.startTime, m.photoperiod)}</span>`;
+    clone.querySelector(".tpl-sunrise-val").innerHTML = `<span class="text-xl font-bold text-gray-200">${formatTime(m.startTime)}</span>`;
+    clone.querySelector(".tpl-sunset-val").innerHTML = `<span class="text-xl font-bold text-gray-200">${calcSunset(m.startTime, m.photoperiod)}</span>`;
     
     clone.querySelector(".tpl-photo-val").innerHTML = styleTimeStr(`${String(m.photoperiod).padStart(2, '0')}h 00m`, "text-white");
     clone.querySelector(".tpl-recovery-val").innerHTML = styleTimeStr(`${m.recoveryMins}m`, "text-red-400");
@@ -86,57 +86,78 @@ export function renderOverview(container, device) {
     // --- 3. The Smart Load Shedding Warning ---
     const loadSheddingText = device.analyticsData?.today?.loadShedding || "00h 00m";
     const totalBlackoutText = device.analyticsData?.today?.totalBlackout || "00h 00m";
-    const rawTotalOutage = m.totalLoadSheddingToday || 0;
 
-    // 🔥 SMART DISMISS LOGIC: Generate a unique storage key for today and this specific tank
+    const nowSecs = Math.floor(Date.now() / 1000);
+    const isOffline = m.lastHeartbeatTs && (nowSecs - m.lastHeartbeatTs) > 120;
+    
+    let lastOutageStr = null;
+    if (m.outagesToday) {
+        const parts = m.outagesToday.split(',').filter(x => x);
+        if (parts.length > 0) {
+            lastOutageStr = parts[parts.length - 1]; // e.g. "17:00-17:30"
+        }
+    }
+
     const todayDate = new Date().toDateString();
     const ackKey = `ack_outage_${device.hwid}_${todayDate}`;
-    const ackedOutage = parseInt(localStorage.getItem(ackKey)) || 0;
+    const ackedOutageStr = localStorage.getItem(ackKey) || "";
 
-    // Show banner ONLY if an outage exists AND it has increased since the user last dismissed it
-    if (rawTotalOutage > 0 && rawTotalOutage > ackedOutage) {
+    if (isOffline) {
+        const currentOutageMins = Math.floor((nowSecs - m.lastHeartbeatTs) / 60);
+        const formatMins = (mins) => {
+            const h = Math.floor(mins / 60).toString().padStart(2, '0');
+            const m = (mins % 60).toString().padStart(2, '0');
+            return `${h}h ${m}m`;
+        };
         const blackoutWarningHTML = `
-            <div class="mt-3 rounded-xl bg-red-900/10 border border-red-900/40 transition-colors flex justify-between items-stretch overflow-hidden group" id="btn-blackout-banner">
-                
-                <div class="p-4 flex-1 cursor-pointer hover:bg-red-900/10 transition-colors" id="blackout-click-area">
+            <div class="mt-3 rounded-xl bg-red-900/20 border border-red-500/50 animate-pulse transition-colors flex justify-between items-stretch overflow-hidden group">
+                <div class="p-4 flex-1 cursor-pointer hover:bg-red-900/30 transition-colors" onclick="window.showOutageModal('Power Outage', 'Today\\'s Report', '${totalBlackoutText}', '${loadSheddingText}')">
                     <p class="text-[10px] font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5 mb-1">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                        Power Outage Detected
+                        CURRENTLY LOAD SHEDDING
                     </p>
-                    <div class="text-[12px] text-gray-300 font-medium flex items-center">
-                        Disrupted Light: <span class="ml-1">${styleTimeStr(loadSheddingText, "text-red-400")}</span>
+                    <div class="text-[12px] text-gray-200 font-medium flex items-center">
+                        Offline for: <span class="ml-1">${styleTimeStr(formatMins(currentOutageMins), "text-red-400")}</span>
                     </div>
                 </div>
-                
-                <button id="btn-dismiss-outage" class="px-4 flex items-center justify-center border-l border-red-900/40 hover:bg-red-900/30 text-gray-500 hover:text-white transition-colors active:scale-95" aria-label="Dismiss">
+            </div>
+        `;
+        const dynamicRowsNode = clone.querySelector(".tpl-dynamic-rows");
+        dynamicRowsNode.insertAdjacentHTML('beforebegin', blackoutWarningHTML);
+    } 
+    else if (lastOutageStr && lastOutageStr !== ackedOutageStr) {
+        const blackoutWarningHTML = `
+            <div class="mt-3 rounded-xl bg-gray-800/50 border border-gray-700 transition-colors flex justify-between items-stretch overflow-hidden group" id="btn-blackout-banner">
+                <div class="p-4 flex-1 cursor-pointer hover:bg-gray-800 transition-colors" id="blackout-click-area">
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5 mb-1">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        Last Outage Recovered
+                    </p>
+                    <div class="text-[12px] text-gray-300 font-medium flex items-center">
+                        Time: <span class="ml-1 font-bold text-white">${lastOutageStr}</span>
+                    </div>
+                </div>
+                <button id="btn-dismiss-outage" class="px-4 flex items-center justify-center border-l border-gray-700 hover:bg-gray-700 text-gray-500 hover:text-white transition-colors active:scale-95" aria-label="Dismiss">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
         `;
-
         const dynamicRowsNode = clone.querySelector(".tpl-dynamic-rows");
         dynamicRowsNode.insertAdjacentHTML('beforebegin', blackoutWarningHTML);
 
-        // --- Handle Dismiss (The Cross Button) ---
         const btnDismiss = clone.querySelector("#btn-dismiss-outage");
         const bannerContainer = clone.querySelector("#btn-blackout-banner");
         
         btnDismiss.addEventListener("click", (e) => {
-            e.stopPropagation(); // Stop the modal from opening
-            localStorage.setItem(ackKey, rawTotalOutage); // Save current outage mins
+            e.stopPropagation(); 
+            localStorage.setItem(ackKey, lastOutageStr); 
             bannerContainer.style.opacity = "0";
-            setTimeout(() => bannerContainer.remove(), 300); // Smooth animation out
+            setTimeout(() => bannerContainer.remove(), 300); 
         });
 
-        // --- 🔥 Handle Custom Popup via Global Function ---
         const clickArea = clone.querySelector("#blackout-click-area");
         clickArea.addEventListener("click", () => {
-            window.showOutageModal(
-                "Power Outage", 
-                "Today's Report", 
-                totalBlackoutText, 
-                loadSheddingText
-            );
+            window.showOutageModal("Power Outage", "Today's Report", totalBlackoutText, loadSheddingText);
         });
     }
 
@@ -149,11 +170,11 @@ export function renderOverview(container, device) {
             <div class="grid grid-cols-2 gap-4 mt-3">
                 <div class="pt-3 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">CO2 Starts</p>
-                    <span class="text-lg font-bold text-gray-200">${formatTime(m.co2OnTime)}</span>
+                    <span class="text-xl font-bold text-gray-200">${formatTime(m.co2OnTime)}</span>
                 </div>
                 <div class="text-right pt-3 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">CO2 Ends</p>
-                    <span class="text-lg font-bold text-gray-200">${formatTime(m.co2OffTime)}</span>
+                    <span class="text-xl font-bold text-gray-200">${formatTime(m.co2OffTime)}</span>
                 </div>
             </div>
         `;
@@ -164,11 +185,11 @@ export function renderOverview(container, device) {
             <div class="grid grid-cols-2 gap-4 mt-3">
                 <div class="pt-3 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Fan Starts</p>
-                    <span class="text-lg font-bold text-gray-200">${formatTime(m.fanOnTime)}</span>
+                    <span class="text-xl font-bold text-gray-200">${formatTime(m.fanOnTime)}</span>
                 </div>
                 <div class="text-right pt-3 border-t border-gray-800/40">
                     <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Fan Ends</p>
-                    <span class="text-lg font-bold text-gray-200">${formatTime(m.fanOffTime)}</span>
+                    <span class="text-xl font-bold text-gray-200">${formatTime(m.fanOffTime)}</span>
                 </div>
             </div>
         `;

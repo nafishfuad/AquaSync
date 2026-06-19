@@ -10,24 +10,69 @@ import { showOutageModal } from './components/system/OutageModal.js';
 import { initAuthModal } from './components/system/AuthModal.js'; 
 
 const AquaSync = {
+    _sendTimeout: null,
+
     async init() {
         console.log("🌊 AquaSync Ecosystem Initializing...");
+        
+        // Dynamic Debounce: Hyper-fast for Local Wi-Fi, slow for Cloud to save Firebase bandwidth
+        this._debouncedSend = (targetDevice, payload) => {
+            const isLocal = this.currentStatus === 'local';
+            const waitTime = isLocal ? 150 : 3000;
+            
+            if (this._sendTimeout) clearTimeout(this._sendTimeout);
+            
+            this._sendTimeout = setTimeout(async () => {
+                const res = await API.sendCommand(targetDevice, payload);
+                if (res && res.success) {
+                    AquaSync.updateSyncStatus('success'); 
+                    if (res.returnedState) {
+                        DeviceStore.updateDeviceState(targetDevice.hwid, res.returnedState);
+                        AquaSync.renderActiveUI(); 
+                    }
+                } else {
+                    AquaSync.updateSyncStatus('idle');
+                }
+            }, waitTime);
+        };
 
         initAuthModal();
 
         // 🔥 THE FIX: Set up the "ears" BEFORE initializing the auth system!
         window.addEventListener("aquasync_auth_resolved", async () => {
             if (IdentityStore.currentUser) {
-                // If user is logged in, fetch their devices from the cloud!
+                // Claim any locally-known devices in Firebase for this account
+                await DeviceStore.claimAllLocalDevices(IdentityStore.currentUser.uid);
+                // Then fetch their devices from the cloud (includes ones added on other browsers)
                 await DeviceStore.syncFromCloud(IdentityStore.currentUser.uid);
             }
             
             // Redraw UI after cloud sync attempt
             if (Object.keys(DeviceStore.devices).length === 0) {
+                // No devices found locally OR in the cloud — show the pairing wizard
+                ['page-insights', 'page-control', 'page-color', 'page-network'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.classList.add('hidden');
+                });
+                document.querySelectorAll("nav").forEach(nav => {
+                    if (nav.id !== "slot-top-nav") nav.classList.add("hidden");
+                });
+                const topNav = document.getElementById("slot-top-nav");
+                if (topNav) {
+                    topNav.classList.remove("hidden");
+                    topNav.style.display = "block";
+                    topNav.style.zIndex = "400";
+                }
+                initTopNav();
                 if (typeof renderEmptyState === 'function') renderEmptyState();
             } else {
-                initTopNav();           
-                this.renderActiveUI();  
+                // Devices found — do a full UI bootstrap (tab restore + sync loop)
+                document.querySelectorAll("nav").forEach(nav => nav.classList.remove("hidden"));
+                initTopNav();
+                const lastOpenTab = localStorage.getItem('aquasync_active_tab') || 'page-control';
+                this.switchTab(lastOpenTab);
+                this.renderActiveUI();
+                this.runSyncLoop();
             }
         });
 
@@ -109,24 +154,22 @@ const AquaSync = {
     setConnectionStatus(status) {
         this.currentStatus = status;
         
-        const topPing = document.getElementById("ui-top-ping");
-        const topDot = document.getElementById("ui-top-dot");
+        const topPings = document.querySelectorAll(".ui-top-ping");
+        const topDots = document.querySelectorAll(".ui-top-dot");
         
-        if (topPing && topDot) {
-            topPing.className = "absolute inline-flex h-full w-full rounded-full opacity-75";
-            topDot.className = "relative inline-flex rounded-full h-2.5 w-2.5 transition-colors duration-300";
-            
-            if (status === "local") {
-                topPing.classList.add("bg-blue-400", "animate-ping");
-                topDot.classList.add("bg-blue-500");
-            } else if (status === "cloud") {
-                topPing.classList.add("bg-purple-400", "animate-ping");
-                topDot.classList.add("bg-purple-500");
-            } else { 
-                topPing.classList.add("hidden"); 
-                topDot.classList.add("bg-gray-500"); 
-            }
-        }
+        topPings.forEach(topPing => {
+            topPing.className = "ui-top-ping absolute inline-flex h-full w-full rounded-full opacity-75";
+            if (status === "local") topPing.classList.add("bg-aqua", "animate-ping");
+            else if (status === "cloud") topPing.classList.add("bg-purple-400", "animate-ping");
+            else topPing.classList.add("hidden");
+        });
+
+        topDots.forEach(topDot => {
+            topDot.className = "ui-top-dot relative inline-flex rounded-full h-2.5 w-2.5 transition-colors duration-300";
+            if (status === "local") topDot.classList.add("bg-aqua");
+            else if (status === "cloud") topDot.classList.add("bg-purple-500");
+            else topDot.classList.add("bg-gray-500");
+        });
         
         const overviewPing = document.getElementById("ui-overview-ping");
         const overviewDot = document.getElementById("ui-overview-dot");
@@ -139,8 +182,8 @@ const AquaSync = {
                 overviewPing.classList.add("hidden"); 
                 overviewDot.classList.add("bg-red-500"); 
             } else { 
-                overviewPing.classList.add("bg-blue-400", "animate-ping");
-                overviewDot.classList.add("bg-blue-500");
+                overviewPing.classList.add("bg-aqua", "animate-ping");
+                overviewDot.classList.add("bg-aqua");
             }
         }
     },
@@ -158,7 +201,7 @@ const AquaSync = {
         } else if (state === 'success') {
             check.classList.remove('hidden');
             setTimeout(() => {
-                if (!spin.classList.contains('hidden') === false) { 
+                if (!check.classList.contains('hidden')) { 
                     this.updateSyncStatus('idle');
                 }
             }, 5000);
@@ -221,47 +264,41 @@ const AquaSync = {
         } else {
             this.setConnectionStatus("offline");
         }
+
+        // Loop every 10 seconds
+        setTimeout(() => this.runSyncLoop(), 10000);
     },
 
     renderActiveUI() {
         const device = DeviceStore.getActiveDevice();
         if (!device) return;
 
-        const debouncedNetworkSend = debounce(async (targetDevice, payload) => {
-            const res = await API.sendCommand(targetDevice, payload);
-            if (res && res.success) {
-                AquaSync.updateSyncStatus('success'); 
-                if (res.returnedState) {
-                    DeviceStore.updateDeviceState(targetDevice.hwid, res.returnedState);
-                    AquaSync.renderActiveUI(); 
-                }
-            } else {
-                AquaSync.updateSyncStatus('idle');
-            }
-        }, 5000);
-
         const commandHook = async (payload, fastUI = false) => {
-            if ((payload.hasOwnProperty("isLightOn") || payload.hasOwnProperty("currentBrightness")) && !device.metrics.isCO2ScheduleSeparate) {
+            // Get fresh device in case user switched tabs/devices during debounce
+            const currentDevice = DeviceStore.getActiveDevice();
+            if (!currentDevice) return;
+
+            if ((payload.hasOwnProperty("isLightOn") || payload.hasOwnProperty("currentBrightness")) && !currentDevice.metrics.isCO2ScheduleSeparate) {
                 payload.isCO2On = payload.hasOwnProperty("isLightOn") ? payload.isLightOn : (payload.currentBrightness > 0);
             }
 
-            DeviceStore.updateDeviceState(device.hwid, payload);
+            DeviceStore.updateDeviceState(currentDevice.hwid, payload);
             AquaSync.renderActiveUI(); 
             AquaSync.updateSyncStatus('syncing');
 
             if (!fastUI) {
-                const res = await API.sendCommand(device, payload);
+                const res = await API.sendCommand(currentDevice, payload);
                 if (res && res.success) {
                     AquaSync.updateSyncStatus('success'); 
                     if (res.returnedState) {
-                        DeviceStore.updateDeviceState(device.hwid, res.returnedState);
+                        DeviceStore.updateDeviceState(currentDevice.hwid, res.returnedState);
                         AquaSync.renderActiveUI(); 
                     }
                 } else {
                     AquaSync.updateSyncStatus('idle');
                 }
             } else {
-                debouncedNetworkSend(device, payload);
+                AquaSync._debouncedSend(currentDevice, payload);
             }
         };
 

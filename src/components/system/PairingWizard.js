@@ -1,5 +1,6 @@
 // src/components/system/PairingWizard.js
-import { DeviceStore, IdentityStore } from '../../state.js'; // 🔥 ADDED IdentityStore
+import { DeviceStore, IdentityStore } from '../../state.js';
+import { showAlert } from './CustomDialogs.js';
 import { API } from '../../api.js';
 
 let heartbeatInterval = null;
@@ -105,7 +106,7 @@ export function renderPairingWizard(onComplete) {
         const deviceName = document.getElementById("inp-name").value.trim() || "AquaSync Controller";
 
         if (!ssid || !pass) {
-            alert("Please enter both Wi-Fi Name and Password.");
+            await showAlert("Missing Details", "Please enter both Wi-Fi Name and Password.");
             return;
         }
 
@@ -119,13 +120,18 @@ export function renderPairingWizard(onComplete) {
             DeviceStore.addDevice(discoveredHwid, "AS-Standard", deviceName);
             DeviceStore.updateNetwork(discoveredHwid, null, true); 
             
+            // Write ownerUid to Firebase so this device syncs across all browsers
+            if (IdentityStore.currentUser) {
+                await DeviceStore.claimDevice(discoveredHwid, IdentityStore.currentUser.uid);
+            }
+
             // 🔥 THE FIX: Explicitly force the browser to save to LocalStorage before closing!
             DeviceStore.save(); 
             
             setTimeout(() => {
                 closeModal();
                 if (onComplete) onComplete(); 
-            }, 1500);
+            }, 3000); // Wait 3 seconds to ensure ESP32 safely restarts without connection interruption
         } else {
             btnSend.innerHTML = `❌ Failed. Try Again`;
             btnSend.classList.remove("opacity-50", "pointer-events-none");
@@ -152,7 +158,7 @@ export function renderEmptyState() {
             renderPairingWizard(() => {
                 slot.classList.add("hidden");
                 slot.classList.remove("flex");
-                window.location.reload(); 
+                setTimeout(() => window.location.reload(), 1000); 
             });
         });
 
@@ -164,7 +170,7 @@ export function renderEmptyState() {
         startBtn.parentNode.insertBefore(demoBtn, startBtn.nextSibling);
 
         // 🔥 NEW: Inject Cloud Login Button if NOT logged in
-        if (!IdentityStore.user) {
+        if (!IdentityStore.currentUser) {
             const loginBtn = document.createElement("button");
             loginBtn.className = "w-full max-w-[280px] bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500 hover:text-white text-purple-400 font-bold py-3.5 rounded-xl text-[11px] uppercase tracking-widest transition-all active:scale-95 mt-3 block mx-auto shadow-[0_0_15px_rgba(168,85,247,0.15)]";
             loginBtn.innerText = "Log In to Cloud";
@@ -176,7 +182,7 @@ export function renderEmptyState() {
             // If they are logged in, show a beautiful Synced badge instead
             const userBox = document.createElement("div");
             userBox.className = "mt-5 text-center text-[10px] text-gray-500 font-bold tracking-widest uppercase border border-gray-800 bg-[#121212] rounded-xl py-2 px-4 max-w-[280px] mx-auto shadow-inner";
-            userBox.innerHTML = `Synced to Cloud <br><span class="text-aqua lowercase tracking-normal text-xs">${IdentityStore.user.email}</span>`;
+            userBox.innerHTML = `Synced to Cloud <br><span class="text-aqua lowercase tracking-normal text-xs">${IdentityStore.currentUser.email}</span>`;
             demoBtn.parentNode.insertBefore(userBox, demoBtn.nextSibling);
         }
     }

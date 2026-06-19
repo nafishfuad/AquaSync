@@ -1,8 +1,9 @@
 // src/components/system/TopNav.js
 
-import { DeviceStore } from '../../state.js';
+import { DeviceStore, IdentityStore } from '../../state.js';
 import { renderAboutModal } from './AboutModal.js';
 import { renderPairingWizard, renderEmptyState, setupDemoDevice } from './PairingWizard.js';
+import { showConfirm } from './CustomDialogs.js';
 
 export function initTopNav() {
     const slot = document.getElementById("slot-top-nav");
@@ -29,7 +30,7 @@ export function initTopNav() {
     const hideStatusIcons = activeDevice ? "" : "hidden";
 
     slot.innerHTML = `
-        <div class="pointer-events-auto w-full max-w-[1200px] bg-cardbg border border-gray-700/50 shadow-md rounded-2xl px-4 py-3 flex justify-between items-center transition-colors duration-300">
+        <div class="pointer-events-auto w-full max-w-[1200px] mx-auto bg-cardbg border border-gray-700/50 shadow-md rounded-2xl px-4 py-3 flex justify-between items-center transition-colors duration-300">
             <div class="flex items-center space-x-3">
                 <div class="w-8 h-8 bg-gradient-to-br from-aqua to-blue-600 rounded-lg flex items-center justify-center shadow-[0_0_10px_rgba(0,242,254,0.3)]">
                     <span class="text-sm">🌊</span>
@@ -41,32 +42,27 @@ export function initTopNav() {
             </div>
 
             <div class="flex items-center space-x-3 text-gray-400">
-                <button id="btn-theme-toggle" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 transition-colors active:scale-95 group">
-                    <svg id="icon-sun" class="w-4 h-4 ${savedTheme === 'dark' ? 'block' : 'hidden'} group-hover:text-amber-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                    <svg id="icon-moon" class="w-4 h-4 ${savedTheme === 'light' ? 'block' : 'hidden'} group-hover:text-aqua transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                <button id="btn-theme-toggle-desktop" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 transition-colors active:scale-95 group">
+                    <svg class="icon-sun w-4 h-4 ${savedTheme === 'dark' ? 'block' : 'hidden'} group-hover:text-amber-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                    <svg class="icon-moon w-4 h-4 ${savedTheme === 'light' ? 'block' : 'hidden'} group-hover:text-aqua transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
                 </button>
                 
-                <button id="btn-nav-info" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 transition-colors border border-gray-700 active:scale-95">
+                <button id="btn-nav-info-desktop" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 transition-colors border border-gray-700 active:scale-95">
                     <span class="text-xs font-bold">i</span>
                 </button>
                 
                 <div class="flex items-center justify-center w-6 h-6 ml-1 relative ${hideStatusIcons}">
                     <div class="relative flex h-2.5 w-2.5 items-center justify-center">
-                        <span id="ui-top-ping" class="absolute inline-flex h-full w-full rounded-full opacity-75 hidden"></span>
-                        <span id="ui-top-dot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-gray-500 transition-colors duration-300"></span>
+                        <span class="ui-top-ping absolute inline-flex h-full w-full rounded-full opacity-75 hidden"></span>
+                        <span class="ui-top-dot relative inline-flex rounded-full h-2.5 w-2.5 bg-gray-500 transition-colors duration-300"></span>
                     </div>
-                    <div id="ui-status-spinner" class="hidden absolute w-4 h-4 border-2 border-aqua border-t-transparent rounded-full animate-spin"></div>
-                    
-                    <div id="ui-status-check" class="hidden absolute text-aqua flex items-center justify-center">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
-                        </svg>
-                    </div>
+                    <div class="ui-status-spinner hidden absolute w-4 h-4 border-2 border-aqua border-t-transparent rounded-full animate-spin"></div>
+                    <div class="ui-status-check hidden absolute text-aqua flex items-center justify-center"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg></div>
                 </div>
             </div>
         </div>
 
-        <div class="pointer-events-auto w-full max-w-[1200px] bg-cardbg/90 backdrop-blur-xl border border-gray-700/50 shadow-md rounded-2xl relative mt-3 transition-colors duration-300 ${activeDevice ? '' : 'hidden'}">
+        <div class="pointer-events-auto w-full max-w-[1200px] mx-auto bg-cardbg/90 backdrop-blur-xl border border-gray-700/50 shadow-md rounded-2xl relative mt-3 transition-colors duration-300 ${activeDevice ? '' : 'hidden'}">
             
             <div id="device-dropdown-trigger" class="px-4 py-3 flex justify-between items-center cursor-pointer active:bg-gray-800/50 rounded-2xl transition-colors">
                 <div class="flex items-center space-x-3">
@@ -82,7 +78,7 @@ export function initTopNav() {
                 </div>
             </div>
 
-            <div id="device-dropdown-menu" class="hidden absolute top-[110%] left-0 w-full bg-cardbg border border-gray-700/50 shadow-2xl rounded-2xl p-3 z-[250] flex-col space-y-2 transition-colors duration-300">
+            <div id="device-dropdown-menu" class="hidden absolute top-[110%] left-0 w-full bg-cardbg border border-gray-700/50 shadow-2xl rounded-2xl p-3 z-50 flex-col space-y-2 transition-colors duration-300">
                 ${Object.values(allDevices).map(dev => `
                     <div class="bg-cardbg border border-gray-700/50 rounded-xl p-3 flex justify-between items-center ${activeDevice && dev.hwid === activeDevice.hwid ? 'border-aqua/50 bg-aqua/5' : ''} transition-colors duration-300">
                         <div class="flex items-center space-x-3">
@@ -108,23 +104,35 @@ export function initTopNav() {
         </div>
     `;
 
-    document.getElementById("btn-theme-toggle").onclick = () => {
+    const toggleTheme = () => {
         const isLight = document.body.classList.toggle("light-theme");
         localStorage.setItem("aquasync_theme", isLight ? "light" : "dark");
         
-        document.getElementById("icon-sun").classList.toggle("hidden", isLight);
-        document.getElementById("icon-sun").classList.toggle("block", !isLight);
+        document.querySelectorAll(".icon-sun").forEach(el => {
+            el.classList.toggle("hidden", isLight);
+            el.classList.toggle("block", !isLight);
+        });
         
-        document.getElementById("icon-moon").classList.toggle("hidden", !isLight);
-        document.getElementById("icon-moon").classList.toggle("block", isLight);
+        document.querySelectorAll(".icon-moon").forEach(el => {
+            el.classList.toggle("hidden", !isLight);
+            el.classList.toggle("block", isLight);
+        });
 
         if (window.AquaSync && window.AquaSync.renderActiveUI) {
             window.AquaSync.renderActiveUI();
         }
     };
 
+    const btnThemeMobile = document.getElementById("btn-theme-toggle-mobile");
+    if (btnThemeMobile) btnThemeMobile.onclick = toggleTheme;
+    const btnThemeDesktop = document.getElementById("btn-theme-toggle-desktop");
+    if (btnThemeDesktop) btnThemeDesktop.onclick = toggleTheme;
+
     // 🔥 THE FIX: Attached globally so it works even if you have 0 devices
-    document.getElementById("btn-nav-info").onclick = renderAboutModal;
+    const btnInfoMobile = document.getElementById("btn-nav-info-mobile");
+    if (btnInfoMobile) btnInfoMobile.onclick = renderAboutModal;
+    const btnInfoDesktop = document.getElementById("btn-nav-info-desktop");
+    if (btnInfoDesktop) btnInfoDesktop.onclick = renderAboutModal;
 
     if (activeDevice) {
         const trigger = document.getElementById("device-dropdown-trigger");
@@ -140,7 +148,7 @@ export function initTopNav() {
         document.getElementById("btn-add-new-device").onclick = () => {
             menu.classList.add("hidden");
             menu.classList.remove("flex");
-            renderPairingWizard(() => window.location.reload());
+            renderPairingWizard(() => setTimeout(() => window.location.reload(), 1000));
         };
 
         document.querySelectorAll(".btn-switch-device").forEach(btn => {
@@ -152,9 +160,15 @@ export function initTopNav() {
         });
 
         document.querySelectorAll(".btn-remove-device").forEach(btn => {
-            btn.onclick = (e) => {
-                if (confirm("Are you sure you want to remove this device from the app?")) {
+            btn.onclick = async (e) => {
+                if (await showConfirm("Remove Device", "Are you sure you want to remove this device from the app?")) {
                     const targetHwid = e.target.getAttribute("data-hwid");
+                    
+                    // Remove cloud ownership so the device is no longer tied to this account
+                    if (IdentityStore.currentUser) {
+                        await DeviceStore.unclaimDevice(targetHwid);
+                    }
+                    
                     DeviceStore.removeDevice(targetHwid);
                     
                     if (Object.keys(DeviceStore.devices).length === 0) {

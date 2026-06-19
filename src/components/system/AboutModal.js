@@ -20,7 +20,7 @@ export function renderAboutModal() {
     // 4. Create the dedicated wrapper
     const modal = document.createElement("div");
     modal.id = "about-modal-wrapper";
-    modal.className = "fixed inset-0 z-[500] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in pointer-events-auto";
+    modal.className = "fixed inset-0 z-[150] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in pointer-events-auto";
     
     // 5. Inject the HTML
     modal.innerHTML = `

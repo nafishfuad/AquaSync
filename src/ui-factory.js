@@ -1,5 +1,5 @@
 // src/ui-factory.js
-
+import { DeviceStore } from './state.js';
 // --- Analytics Layer Imports ---
 import { renderOverview } from './components/analytics/Overview.js';
 import { renderCharts } from './components/analytics/Charts.js';
@@ -13,10 +13,11 @@ import { renderColorSpectrum } from './components/hardware/ColorMixer.js';
 
 // --- System Layer Imports ---
 import { renderConnection } from './components/system/Connection.js';
-import { renderFirmware } from './components/system/Firmware.js';
 import { renderMaintenance } from './components/system/Maintenance.js';
 import { renderCompanionApp } from './components/system/Companion.js';
-import { renderAccount } from './components/system/Account.js'; // 🔥 ADDED
+import { renderFirmware } from './components/system/Firmware.js';
+import { renderAccount } from './components/system/Account.js';
+import { showConfirm } from './components/system/CustomDialogs.js'; // 🔥 ADDED
 
 /**
  * Page 1: Renders the Analytics & Graph Dashboard
@@ -57,12 +58,14 @@ export function buildColorPanel(device, commandHook) {
     const previewSlot = document.getElementById("slot-color-preview");
     const presetsSlot = document.getElementById("slot-color-presets");
     const manualMixSlot = document.getElementById("slot-color-manual-mix");
+    const customSlot = document.getElementById("slot-color-custom");
 
-    if (!previewSlot || !presetsSlot || !manualMixSlot) return;
+    if (!previewSlot || !presetsSlot || !manualMixSlot || !customSlot) return;
 
     previewSlot.innerHTML = "";
     presetsSlot.innerHTML = "";
     manualMixSlot.innerHTML = "";
+    customSlot.innerHTML = "";
 
     const colorTabButton = document.getElementById("nav-page-color");
 
@@ -72,7 +75,6 @@ export function buildColorPanel(device, commandHook) {
     }
     if (colorTabButton) colorTabButton.classList.remove("hidden");
 
-    // 🔥 THE FIX: Reconstruct the flat color variables into the object ColorMixer expects
     const currentSpectrumObj = {
         w: device.metrics.colorW || 100,
         r: device.metrics.colorR || 100,
@@ -80,15 +82,33 @@ export function buildColorPanel(device, commandHook) {
         b: device.metrics.colorB || 100
     };
 
-    renderColorSpectrum(previewSlot, presetsSlot, manualMixSlot, currentSpectrumObj, (newSpectrum) => {
-        // Break the object back down into flat metrics for the command hook
-        commandHook({ 
-            colorW: newSpectrum.w, 
-            colorR: newSpectrum.r, 
-            colorG: newSpectrum.g, 
-            colorB: newSpectrum.b 
-        });
-    });
+    renderColorSpectrum(
+        previewSlot, 
+        presetsSlot, 
+        manualMixSlot, 
+        customSlot,
+        currentSpectrumObj, 
+        device.customColors || [],
+        (newSpectrum, fastUI = false) => {
+            commandHook({ 
+                colorW: newSpectrum.w, 
+                colorR: newSpectrum.r, 
+                colorG: newSpectrum.g, 
+                colorB: newSpectrum.b 
+            }, fastUI);
+        },
+        (name, spectrum) => {
+            if (!device.customColors) device.customColors = [];
+            device.customColors.push({ name, ...spectrum });
+            DeviceStore.save();
+            buildColorPanel(device, commandHook); // re-render
+        },
+        (index) => {
+            device.customColors.splice(index, 1);
+            DeviceStore.save();
+            buildColorPanel(device, commandHook); // re-render
+        }
+    );
 }
 
 /**
@@ -103,8 +123,8 @@ export function buildSystemPanel(device, apiReference, commandHook) {
     // 🔥 NEW: Render the Account Card at the top
     renderAccount(systemSlot);
 
-    renderConnection(systemSlot, device.network, () => {
-        if (confirm("Reset Wi-Fi stack? The controller will drop back to local hotspot configuration.")) {
+    renderConnection(systemSlot, device.network, async () => {
+        if (await showConfirm("Reset Wi-Fi", "Reset Wi-Fi stack? The controller will drop back to local hotspot configuration.")) {
             apiReference.sendCommand(device, { command: "forget_wifi" });
         }
     });

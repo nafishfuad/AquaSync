@@ -1,6 +1,7 @@
 {
   "name": "AquaSync Ecosystem",
   "short_name": "AquaSync",
+  "version": "v1.5.0",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#121212",

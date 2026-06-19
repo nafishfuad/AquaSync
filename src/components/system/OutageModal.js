@@ -8,7 +8,7 @@ export function showOutageModal(title, subtitle, houseOutageText, lostLightText)
     // 2. Create the beautifully designed modal
     const modal = document.createElement("div");
     modal.id = "custom-outage-modal";
-    modal.className = "fixed inset-0 z-[500] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 transition-opacity duration-300 opacity-0 pointer-events-auto";
+    modal.className = "fixed inset-0 z-[150] flex items-center justify-center bg-deepbg/80 backdrop-blur-sm p-4 transition-opacity duration-300 opacity-0 pointer-events-auto";
     
     modal.innerHTML = `
         <div class="bg-cardbg border border-gray-700 w-full max-w-xs rounded-3xl shadow-2xl overflow-hidden transform scale-95 transition-transform duration-300" id="custom-outage-content">
@@ -23,8 +23,8 @@ export function showOutageModal(title, subtitle, houseOutageText, lostLightText)
                 </div>
             </div>
             
-            <div class="p-6 space-y-4 bg-black/10">
-                <div class="flex justify-between items-center bg-black/30 p-3.5 rounded-xl border border-white/5">
+            <div class="p-6 space-y-4">
+                <div class="flex justify-between items-center bg-gray-800 p-3.5 rounded-xl border border-gray-700">
                     <div class="flex items-center space-x-2.5">
                         <span class="text-lg">🔌</span>
                         <span class="text-xs text-gray-400 uppercase tracking-wider font-bold">House Outage</span>
@@ -32,7 +32,7 @@ export function showOutageModal(title, subtitle, houseOutageText, lostLightText)
                     <span class="text-red-400 font-bold">${houseOutageText}</span>
                 </div>
                 
-                <div class="flex justify-between items-center bg-black/30 p-3.5 rounded-xl border border-white/5">
+                <div class="flex justify-between items-center bg-gray-800 p-3.5 rounded-xl border border-gray-700">
                     <div class="flex items-center space-x-2.5">
                         <span class="text-lg">☀️</span>
                         <span class="text-xs text-gray-400 uppercase tracking-wider font-bold">Lost Light</span>
@@ -41,8 +41,8 @@ export function showOutageModal(title, subtitle, houseOutageText, lostLightText)
                 </div>
             </div>
             
-            <div class="p-4 border-t border-gray-800/50 bg-[#1a1a1a]/50">
-                <button id="btn-close-custom-modal" class="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3.5 rounded-xl text-xs uppercase tracking-widest transition-all active:scale-95 border border-white/5 shadow-md">Close Report</button>
+            <div class="p-4 border-t border-gray-800/50 bg-gray-800">
+                <button id="btn-close-custom-modal" class="w-full bg-deepbg border border-gray-700 hover:bg-gray-700 text-white font-bold py-3.5 rounded-xl text-xs uppercase tracking-widest transition-all active:scale-95 shadow-md">Close Report</button>
             </div>
         </div>
     `;

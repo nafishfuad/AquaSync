@@ -1,6 +1,6 @@
 // src/components/system/Maintenance.js
 
-import { DeviceStore } from '../../state.js';
+import { DeviceStore, IdentityStore } from '../../state.js';
 import { showSystemActionModal } from './SystemModals.js';
 
 export function renderMaintenance(container, commandHook) {
@@ -33,16 +33,21 @@ export function renderMaintenance(container, commandHook) {
 
     div.querySelector('#btn-reset').onclick = () => {
         // Trigger the custom beautiful modal (Red Warning)
-        showSystemActionModal('reset', deviceName, () => {
+        showSystemActionModal('reset', deviceName, async () => {
             // 1. Send command to ESP32
             commandHook({ command: "factory_reset" });
             
-            // 2. 🔥 THE BUG FIX: Surgically remove ONLY this device from memory
+            // 2. Remove cloud ownership so the device can be re-paired to any account
+            if (hwid && IdentityStore.currentUser) {
+                await DeviceStore.unclaimDevice(hwid);
+            }
+
+            // 3. 🔥 THE BUG FIX: Surgically remove ONLY this device from memory
             if (hwid) {
                 DeviceStore.removeDevice(hwid);
             }
 
-            // 3. Reload the UI gracefully
+            // 4. Reload the UI gracefully
             setTimeout(() => {
                 if (Object.keys(DeviceStore.devices).length === 0) {
                     // Show the empty setup wizard

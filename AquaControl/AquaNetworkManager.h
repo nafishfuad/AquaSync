@@ -19,6 +19,7 @@ private:
     
     TankSettings _shadow; 
     bool _shadowInit = false;
+    WiFiClientSecure _client;
 
     // 🔥 OPTIMIZATION A: Initialize to a negative offset so the command fetch fires INSTANTLY on boot!
     unsigned long _lastFirebasePull = -15000; 
@@ -78,6 +79,12 @@ private:
         if (!_shadowInit || s.fanSpeed != _shadow.fanSpeed) { doc["fanSpeed"] = s.fanSpeed; _shadow.fanSpeed = s.fanSpeed; changes++; }
         if (!_shadowInit || s.totalLoadSheddingToday != _shadow.totalLoadSheddingToday) { doc["totalLoadSheddingToday"] = s.totalLoadSheddingToday; _shadow.totalLoadSheddingToday = s.totalLoadSheddingToday; changes++; }
         if (!_shadowInit || s.lightLoadSheddingToday != _shadow.lightLoadSheddingToday) { doc["lightLoadSheddingToday"] = s.lightLoadSheddingToday; _shadow.lightLoadSheddingToday = s.lightLoadSheddingToday; changes++; }
+        if (!_shadowInit || String(s.outageEventsToday) != String(_shadow.outageEventsToday)) { doc["outagesToday"] = s.outageEventsToday; strlcpy(_shadow.outageEventsToday, s.outageEventsToday, sizeof(_shadow.outageEventsToday)); changes++; }
+
+        if (!_shadowInit || s.colorW != _shadow.colorW) { doc["colorW"] = s.colorW; _shadow.colorW = s.colorW; changes++; }
+        if (!_shadowInit || s.colorR != _shadow.colorR) { doc["colorR"] = s.colorR; _shadow.colorR = s.colorR; changes++; }
+        if (!_shadowInit || s.colorG != _shadow.colorG) { doc["colorG"] = s.colorG; _shadow.colorG = s.colorG; changes++; }
+        if (!_shadowInit || s.colorB != _shadow.colorB) { doc["colorB"] = s.colorB; _shadow.colorB = s.colorB; changes++; }
 
         if (!_shadowInit || String(s.deviceName) != String(_shadow.deviceName)) { doc["deviceName"] = s.deviceName; strlcpy(_shadow.deviceName, s.deviceName, sizeof(_shadow.deviceName)); changes++; }
         if (!_shadowInit || String(s.startTime) != String(_shadow.startTime)) { doc["startTime"] = s.startTime; strlcpy(_shadow.startTime, s.startTime, sizeof(_shadow.startTime)); changes++; }
@@ -138,8 +145,8 @@ private:
     void handleInfo() {
         addCorsHeaders();
         JsonDocument doc;
-        JsonObject capabilities = doc.createNestedObject("capabilities");
-        capabilities["hasLight"] = true; capabilities["hasCO2"] = true;
+        JsonObject capabilities = doc["capabilities"].to<JsonObject>();
+        capabilities["hasLight"] = true; capabilities["hasCO2"] = true; 
         capabilities["hasFan"] = true; capabilities["hasColorSpectrum"] = true; 
         doc["hw_id"] = _hwid; doc["model"] = DEVICE_MODEL;
         doc["fw_version"] = FW_VERSION; doc["schema_version"] = CURRENT_SCHEMA_VERSION;
@@ -147,6 +154,17 @@ private:
         doc["deviceName"] = s.deviceName; doc["isAutoMode"] = s.isAutoMode;
         doc["currentBrightness"] = s.currentBrightness; doc["isLightOn"] = s.isLightOn;
         doc["isCO2On"] = s.isCO2On; doc["isFanOn"] = s.isFanOn; doc["isFanEnabled"] = s.isFanEnabled;
+        
+        // FULL STATE SYNCHRONIZATION
+        doc["startTime"] = s.startTime; doc["photoperiod"] = s.photoperiod;
+        doc["maxBrightness"] = s.maxBrightness; doc["isDimmerEnabled"] = s.isDimmerEnabled;
+        doc["sunriseMins"] = s.sunriseMins; doc["sunsetMins"] = s.sunsetMins;
+        doc["recoveryMins"] = s.recoveryMins; doc["isCO2ScheduleSeparate"] = s.isCO2ScheduleSeparate;
+        doc["co2OnTime"] = s.co2OnTime; doc["co2OffTime"] = s.co2OffTime;
+        doc["fanOnTime"] = s.fanOnTime; doc["fanOffTime"] = s.fanOffTime;
+        doc["fanSpeed"] = s.fanSpeed;
+        doc["colorW"] = s.colorW; doc["colorR"] = s.colorR; doc["colorG"] = s.colorG; doc["colorB"] = s.colorB;
+
         String out; serializeJson(doc, out);
         _server.send(200, "application/json", out);
     }
@@ -182,6 +200,7 @@ private:
         if (_settingsMgr.updateFromJson(doc.as<JsonObject>())) {
             _hwEngine.execute(_settingsMgr.get(), true, false);
             _lastCommandReceivedTime = millis();
+            _lastFirebasePull = millis(); // 🔥 LOCAL API PRIORITY: Suspend Firebase polling for 15s to keep local Wi-Fi hyper-fast
             _server.send(200, "application/json", "{\"status\":\"success\"}"); 
         } else {
             _server.send(400, "application/json", "{\"status\":\"rejected_version\"}");
@@ -217,6 +236,8 @@ public:
     AquaNetworkManager(SettingsManager& sm, HardwareEngine& hw, String hwid) : _server(80), _settingsMgr(sm), _hwEngine(hw), _hwid(hwid) {}
 
     void begin() {
+        _client.setInsecure(); // 🔥 Prevent heap fragmentation by allocating SSL buffers on a persistent member
+
         _server.onNotFound([this]() { handlePreflight(); });
         _server.on("/info", HTTP_GET, [this]() { handleInfo(); });
         _server.on("/api/control", HTTP_POST, [this]() { handleControl(); });
@@ -233,13 +254,12 @@ public:
         unsigned long now = millis();
         if (WiFi.status() != WL_CONNECTED) return;
 
-        WiFiClientSecure client;
-        client.setInsecure();
         HTTPClient http;
 
         if (!_hasFetchedInitialConfig) {
             bool offlineChangesExist = _settingsMgr.needsFirebaseSync();
-            http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
+            WiFi.setTxPower(WIFI_POWER_19_5dBm); // 🔥 BOOST POWER for Firebase
+            http.begin(_client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
             
             if (http.GET() == 200) {
                 if (!offlineChangesExist) {
@@ -250,6 +270,7 @@ public:
                 }
             }
             http.end();
+            WiFi.setTxPower(WIFI_POWER_8_5dBm); // 🔥 DROP POWER to stay cool
             _hasFetchedInitialConfig = true;
             _shadowInit = false; 
         }
@@ -257,28 +278,56 @@ public:
         if (now - _lastFirebasePull > 15000) {
             _lastFirebasePull = now;
             String cmdUrl = FIREBASE_URL + "/devices/" + _hwid + "/commands.json";
-            http.begin(client, cmdUrl);
+            WiFi.setTxPower(WIFI_POWER_19_5dBm); // 🔥 BOOST POWER for Firebase
+            http.begin(_client, cmdUrl);
             
-            if (http.GET() == 200) {
+            int httpCode = http.GET();
+            if (httpCode == 200) {
                 String cmdPayload = http.getString();
+                http.end(); 
+                
                 if (cmdPayload != "null" && cmdPayload != "") {
                     JsonDocument cmdDoc;
-                    if (!deserializeJson(cmdDoc, cmdPayload)) {
-                        
+                    DeserializationError error = deserializeJson(cmdDoc, cmdPayload);
+                    
+                    if (!error) {
                         if (cmdDoc.containsKey("ota_staged") && cmdDoc["ota_staged"].as<bool>() == false) {
-                            http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
+                            http.begin(_client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
                             http.addHeader("Content-Type", "application/json");
-                            http.PATCH("{\"ota_staged\": false}");
+                            int pCode = http.PATCH("{\"ota_staged\": false}");
+                            if (pCode > 0) http.getString();
                             http.end();
                         }
 
                         if (cmdDoc.containsKey("command")) {
                             String cmd = cmdDoc["command"].as<String>();
-                            http.end(); 
-                            
-                            http.begin(client, cmdUrl);
-                            http.sendRequest("DELETE");
-                            http.end();
+                            bool shouldDeleteCommand = true;
+
+                            if (cmd == "download_ota") {
+                                String targetModel = cmdDoc["device_model"].as<String>();
+                                String version = cmdDoc["version"].as<String>(); 
+                                
+                                if (targetModel == DEVICE_MODEL) {
+                                    String fullDownloadUrl = "https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware/" + targetModel + "_" + version + ".bin";
+                                    httpUpdate.rebootOnUpdate(false); 
+                                    if (httpUpdate.update(_client, fullDownloadUrl) == HTTP_UPDATE_OK) {
+                                        http.begin(_client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
+                                        http.addHeader("Content-Type", "application/json");
+                                        int pCode = http.PATCH("{\"ota_staged\": true}");
+                                        if (pCode > 0) http.getString();
+                                        http.end();
+                                    } else {
+                                        shouldDeleteCommand = false;
+                                    }
+                                }
+                            }
+
+                            if (shouldDeleteCommand) {
+                                http.begin(_client, cmdUrl);
+                                int delCode = http.sendRequest("DELETE");
+                                if (delCode > 0) http.getString();
+                                http.end();
+                            }
 
                             if (cmd == "factory_reset" || cmd == "forget_wifi") {
                                 Preferences p;
@@ -294,44 +343,35 @@ public:
                                 ESP.restart();
                             }
 
-                            if (cmd == "download_ota") {
-                                String targetModel = cmdDoc["device_model"].as<String>();
-                                String version = cmdDoc["version"].as<String>(); 
-                                
-                                if (targetModel == DEVICE_MODEL) {
-                                    String fullDownloadUrl = "https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware/" + targetModel + "_" + version + ".bin";
-                                    WiFiClientSecure otaClient;
-                                    otaClient.setInsecure();
-                                    httpUpdate.rebootOnUpdate(false); 
-                                    if (httpUpdate.update(otaClient, fullDownloadUrl) == HTTP_UPDATE_OK) {
-                                        http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
-                                        http.addHeader("Content-Type", "application/json");
-                                        http.PATCH("{\"ota_staged\": true}");
-                                        http.end();
-                                    }
-                                }
-                            }
                             return;
                         }
 
                         if (_settingsMgr.updateFromJson(cmdDoc.as<JsonObject>())) {
                             _lastCommandReceivedTime = millis();
+                            _settingsMgr.triggerLazySave(); // 🔥 FORCE HARDWARE TO APPLY INSTANTLY
                         }
-                        http.end();
-                        http.begin(client, cmdUrl);
-                        http.sendRequest("DELETE"); 
                     }
+                    
+                    // Unconditionally delete the command from Firebase to prevent getting stuck
+                    http.begin(_client, cmdUrl);
+                    int delCode = http.sendRequest("DELETE");
+                    if (delCode > 0) http.getString();
+                    http.end();
                 }
+            } else {
+                http.end();
             }
-            http.end();
+            WiFi.setTxPower(WIFI_POWER_8_5dBm); // 🔥 DROP POWER to stay cool
         }
 
         if (now - _lastHeartbeat > 60000) {
             _lastHeartbeat = now;
-            http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
+            WiFi.setTxPower(WIFI_POWER_19_5dBm); // 🔥 BOOST POWER for Firebase
+            http.begin(_client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
             http.addHeader("Content-Type", "application/json");
             http.PATCH(generateHeartbeatJson());
             http.end();
+            WiFi.setTxPower(WIFI_POWER_8_5dBm); // 🔥 DROP POWER to stay cool
         }
 
         bool isDebouncedPush = (_settingsMgr.needsFirebaseSync() && (now - _lastCommandReceivedTime > 5000)); 
@@ -362,12 +402,14 @@ public:
             String deltaJson = generateDeltaStateJson();
 
             if (deltaJson != "") {
-                http.begin(client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
+                WiFi.setTxPower(WIFI_POWER_19_5dBm); // 🔥 BOOST POWER for Firebase
+                http.begin(_client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
                 http.addHeader("Content-Type", "application/json");
                 int response = http.PATCH(deltaJson);
                 http.end();
+                WiFi.setTxPower(WIFI_POWER_8_5dBm); // 🔥 DROP POWER to stay cool
 
-                if (response > 0) {
+                if (response >= 200 && response < 300) {
                     if (isDebouncedPush) _settingsMgr.clearFirebaseSync(); 
                     if (isHourlyPush) _lastAnalyticsPush = now;
                 } else {

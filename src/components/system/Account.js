@@ -1,6 +1,7 @@
 // src/components/system/Account.js
 
 import { IdentityStore } from '../../state.js';
+import { showConfirm } from './CustomDialogs.js';
 
 export function renderAccount(container) {
     const div = document.createElement('div');
@@ -28,8 +29,8 @@ export function renderAccount(container) {
             </button>
         `;
 
-        div.querySelector('#btn-sign-out').onclick = () => {
-            if (confirm("Are you sure you want to sign out? You will lose remote cloud access until you sign back in.")) {
+        div.querySelector('#btn-sign-out').onclick = async () => {
+            if (await showConfirm("Sign Out", "Are you sure you want to sign out? You will lose remote cloud access until you sign back in.")) {
                 // Ensure this method exactly matches your state.js implementation (logout or signOut)
                 if (typeof IdentityStore.logout === 'function') {
                     IdentityStore.logout();

@@ -27,7 +27,7 @@ export function renderCharts(container, analyticsData) {
     return `<div class="whitespace-nowrap text-2xl font-bold ${colorClass}">${str}</div>`;
   };
 
-  const createChartCard = (title, statsArray, chartConfigBuilder) => {
+  const createChartCard = (title, statsArray, chartConfigBuilder, heightClass = "h-40") => {
     const clone = template.content.cloneNode(true);
     clone.querySelector(".tpl-chart-title").innerText = title;
 
@@ -61,6 +61,9 @@ export function renderCharts(container, analyticsData) {
     });
     statsGrid.innerHTML = statsHTML;
 
+    const canvasContainer = clone.querySelector(".relative.w-full");
+    canvasContainer.className = `relative w-full ${heightClass}`;
+
     const canvas = clone.querySelector(".tpl-chart-canvas");
     container.appendChild(clone);
 
@@ -90,12 +93,23 @@ export function renderCharts(container, analyticsData) {
       return parseInt(h || 0) * 60 + parseInt(min || 0);
     };
 
+    const outages = [];
+    if (m.outagesToday) {
+        m.outagesToday.split(',').forEach(evt => {
+            if (!evt) return;
+            const [startStr, endStr] = evt.split('-');
+            if (startStr && endStr) {
+                outages.push({ start: parseMins(startStr), end: parseMins(endStr) });
+            }
+        });
+    }
+
     const startMins = parseMins(m.startTime);
     const photoMins = m.photoperiod * 60;
     const endMins = startMins + photoMins;
 
-    const graphStartMins = startMins - 120;
-    const graphEndMins = endMins + 120;
+    const graphStartMins = startMins - 60;
+    const graphEndMins = endMins + 60;
 
     const now = new Date();
     const nowMins = now.getHours() * 60 + now.getMinutes();
@@ -105,10 +119,7 @@ export function renderCharts(container, analyticsData) {
       relativeNowMins += 1440;
     }
 
-    const hourlyGraph = analyticsData.today.hourlyGraph || Array(24).fill(0);
-    const awakeHistory = analyticsData.today.awakeData || Array(24).fill(1);
-
-    for (let t = graphStartMins; t <= graphEndMins; t += 5) {
+    for (let t = graphStartMins; t <= graphEndMins; t += 1) {
       let normalizedT = (t + 1440) % 1440;
       let h = Math.floor(normalizedT / 60);
       let min = Math.floor(normalizedT % 60);
@@ -121,42 +132,31 @@ export function renderCharts(container, analyticsData) {
         labels.push("");
       }
 
-      let isSched =
-        endMins > 1440
-          ? normalizedT >= startMins || normalizedT <= endMins % 1440
-          : normalizedT >= startMins && normalizedT <= endMins;
-
+      let isSched = endMins > 1440 ? normalizedT >= startMins || normalizedT <= endMins % 1440 : normalizedT >= startMins && normalizedT <= endMins;
       let isFuture = t > relativeNowMins;
+      
       let isActuallyOn = false;
       let isBlackout = false;
 
       if (!isFuture && isSched) {
-        let schedStartMin = (h === Math.floor(startMins / 60)) ? (startMins % 60) : 0;
-        
-        if (min >= schedStartMin && min < schedStartMin + hourlyGraph[h]) {
-            isActuallyOn = true;
-        } 
-        else if (min >= schedStartMin + hourlyGraph[h]) {
-            if (awakeHistory[h] < 60) {
-                isBlackout = true;
-            }
-        }
-
-        if (h === now.getHours() && device.metrics.isLightOn && min <= now.getMinutes()) {
-            isActuallyOn = true;
-            isBlackout = false;
-        }
+          isActuallyOn = true;
+          for (const o of outages) {
+              if (o.start <= o.end) {
+                  if (normalizedT >= o.start && normalizedT < o.end) { isBlackout = true; isActuallyOn = false; break; }
+              } else {
+                  if (normalizedT >= o.start || normalizedT < o.end) { isBlackout = true; isActuallyOn = false; break; }
+              }
+          }
       }
 
       let y = isSched ? 1 : 0;
       chartData.push(y);
 
-      let sliceColor = isLightMode ? "#cbd5e1" : "#374151";
+      let sliceColor = isLightMode ? "#e2e8f0" : "#1f2937";
       if (y === 1) {
         if (isFuture) sliceColor = isLightMode ? "#cbd5e1" : "#374151";
+        else if (isBlackout) sliceColor = "#ef4444"; 
         else if (isActuallyOn) sliceColor = "#00f2fe"; 
-        else if (isBlackout) sliceColor = "#ef4444";   
-        else sliceColor = isLightMode ? "#cbd5e1" : "#374151";
       }
       segmentColors.push(sliceColor);
     }
@@ -183,7 +183,7 @@ export function renderCharts(container, analyticsData) {
         labels: labels,
         datasets: [
           {
-            label: "Activity",
+            label: "Timeline",
             data: chartData,
             borderWidth: 2,
             stepped: "middle",
@@ -191,15 +191,11 @@ export function renderCharts(container, analyticsData) {
             pointRadius: 0,
             segment: {
               borderColor: (ctx) => {
+                if (ctx.p0.parsed.y !== ctx.p1.parsed.y)
+                  return isLightMode ? "#e2e8f0" : "#1f2937"; // Vertical steps are ALWAYS Gray
                 if (ctx.p0.parsed.y === 0 && ctx.p1.parsed.y === 0)
-                  return isLightMode ? "#e2e8f0" : "#1f2937";
-                if (ctx.p0.parsed.y === 1 && ctx.p1.parsed.y === 1)
-                  return segmentColors[ctx.p0DataIndex];
-                return (
-                  segmentColors[
-                    ctx.p0.parsed.y === 1 ? ctx.p0DataIndex : ctx.p1DataIndex
-                  ] || "#00f2fe"
-                );
+                  return isLightMode ? "#e2e8f0" : "#1f2937"; // Bottom line is ALWAYS Gray
+                return segmentColors[ctx.p0DataIndex] || "#00f2fe"; // Top line gets its precise segment color
               },
             },
           },
@@ -208,14 +204,23 @@ export function renderCharts(container, analyticsData) {
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const color = segmentColors[context.dataIndex];
+                if (color === "#ef4444") return " Power Outage";
+                if (color === "#00f2fe") return " Active Light";
+                return " Offline/Scheduled";
+              }
+            }
+          }
+        },
         scales: {
           y: {
-            min: -0.1,
-            max: 1.1,
-            ticks: {
-              stepSize: 1,
-              callback: (v) => (v === 1 ? "ON" : v === 0 ? "OFF" : ""),
-            },
+            min: -0.05,
+            max: 1.05,
+            display: false, // Hide the Y axis so the graph spans the full width and stretches vertically
             grid: { color: gridColor, drawBorder: false },
           },
           x: {
@@ -232,6 +237,7 @@ export function renderCharts(container, analyticsData) {
         },
       },
     }),
+    "h-28"
   );
 
   // ==========================================

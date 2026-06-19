@@ -52,6 +52,7 @@ private:
         _prefs.putInt("totLS", settings.totalLoadSheddingToday);
         _prefs.putInt("lgtLS", settings.lightLoadSheddingToday);
         _prefs.putInt("lastDay", settings.lastTrackedDay);
+        _prefs.putString("outages", String(settings.outageEventsToday));
         Serial.println("[SYS] 💾 Analytics securely backed up to Flash Vault.");
     }
 
@@ -227,6 +228,8 @@ public:
             settings.totalLoadSheddingToday = _prefs.getInt("totLS", 0);
             settings.lightLoadSheddingToday = _prefs.getInt("lgtLS", 0);
             settings.lastTrackedDay = _prefs.getInt("lastDay", 0);
+            String outages = _prefs.getString("outages", "");
+            strlcpy(settings.outageEventsToday, outages.c_str(), sizeof(settings.outageEventsToday));
         }
 
         // 🔥 THE FIX: Phase 2 Boot -> Wait for NTP Time to calculate Load Shedding
@@ -245,6 +248,15 @@ public:
                     _recoveryStartMins = curr;
                     _recoveryEndMins = curr + settings.recoveryMins;
                 }
+                
+                time_t localLast = lastBreadcrumb;
+                struct tm* lastInfo = localtime(&localLast);
+                char evtBuf[16];
+                snprintf(evtBuf, sizeof(evtBuf), "%02d:%02d-%02d:%02d,", lastInfo->tm_hour, lastInfo->tm_min, timeinfo->tm_hour, timeinfo->tm_min);
+                if (strlen(settings.outageEventsToday) + strlen(evtBuf) < sizeof(settings.outageEventsToday)) {
+                    strcat(settings.outageEventsToday, evtBuf);
+                }
+                
                 saveAnalyticsVault(settings);
             }
             _lastBreadcrumbTick = nowMillis; 
@@ -274,8 +286,8 @@ public:
         digitalWrite(PIN_CO2, settings.isCO2On ? LOW : HIGH);
         analogWrite(PIN_FAN, (settings.isFanEnabled && settings.isFanOn) ? map(settings.fanSpeed, 0, 100, 255, 0) : 255);
 
-        if (timeValid && (nowMillis - _lastBreadcrumbTick >= 60000)) {
-            _lastBreadcrumbTick = nowMillis;
+        while (timeValid && (nowMillis - _lastBreadcrumbTick >= 60000)) {
+            _lastBreadcrumbTick += 60000; // 🔥 DRIFT FIX: Guarantees exactly 60 ticks per hour even if HTTP requests block the loop!
             
             // Check how many days have passed mathematically
             int currentDayOfYear = timeinfo->tm_yday; 
@@ -312,6 +324,7 @@ public:
                 settings.awakeMinutesHistory[0] = yAwake;
                 settings.totalLoadSheddingToday = 0; 
                 settings.lightLoadSheddingToday = 0;
+                settings.outageEventsToday[0] = '\0';
                 settings.lastTrackedDay = currentDayOfYear;
                 saveAnalyticsVault(settings);
                 

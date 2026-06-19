@@ -1,11 +1,13 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <Preferences.h>
+#include <nvs_flash.h>
 #include "CoreConfig.h"
 #include "SettingsManager.h"
 #include "HardwareEngine.h"
 #include "ButtonManager.h"
 #include "AquaNetworkManager.h" 
+#include "debug_helpers.h"
 
 SettingsManager settingsMgr;
 HardwareEngine  hwEngine;
@@ -14,33 +16,6 @@ AquaNetworkManager* netManager;
 
 String hwid;
 
-
-// 🔥 PHASE 1: The Cryptographic HWID Generator
-String generateSecureHWID() {
-    Preferences prefs;
-    prefs.begin("aqua-ctrl", false);
-    
-    String hwid = prefs.getString("secure_hwid", "");
-
-    if (hwid == "") {
-        String mac = WiFi.macAddress();
-        mac.replace(":", ""); // Remove colons to make it Firebase-safe
-
-        const char charset[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-        String salt = "";
-        for (int i = 0; i < 6; i++) {
-            uint32_t randomIndex = esp_random() % 62; 
-            salt += charset[randomIndex];
-        }
-
-        hwid = "AQUA" + mac + salt;
-        prefs.putString("secure_hwid", hwid);
-        Serial.println("[SYS] Generated New Secure HWID: " + hwid);
-    }
-    
-    prefs.end();
-    return hwid;
-}
 
 void setup() {
     Serial.begin(115200);
@@ -51,6 +26,19 @@ void setup() {
     Serial.println("\n\n=================================");
     Serial.println("🌊 AquaSync Brain Booting...");
     Serial.println("=================================");
+
+    // 🔥 COOLING OPTIMIZATION: Underclock CPU from 160MHz to 80MHz
+    // This dramatically reduces power consumption and thermals while keeping it plenty fast
+    setCpuFrequencyMhz(80); 
+
+    // 🔥 FATAL RECOVERY OPTIMIZATION: Safely initialize NVS and format if completely corrupted
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        Serial.println("[SYS] ⚠️ NVS Memory Corrupted! Formatting to prevent bootloop...");
+        nvs_flash_erase();
+        err = nvs_flash_init();
+    }
+    if (err != ESP_OK) Serial.println("[SYS] ❌ Failed to initialize NVS!");
 
     // We must initialize WiFi first so we can read the MAC address!
     WiFi.mode(WIFI_STA);
@@ -82,6 +70,8 @@ void setup() {
 
     if (ssid != "") {
         Serial.println("[WIFI] Attempting to connect to: " + ssid);
+        // 🔥 POWER OPTIMIZATION: Set baseline power to low (cool) state
+        WiFi.setTxPower(WIFI_POWER_8_5dBm);
         WiFi.begin(ssid.c_str(), pass.c_str());
 
         int timeout = 0;
@@ -115,6 +105,7 @@ void setup() {
 
 void loop() {
     netManager->handleClient();
+    DebugHelpers::checkSerialCommands(settingsMgr);
     
     hwEngine.execute(settingsMgr.get(), settingsMgr.needsHardwareEval(), true);
     
@@ -124,6 +115,8 @@ void loop() {
     
     netManager->syncFirebase();
     settingsMgr.processLazyFlashSave();
+    DebugHelpers::tickLoop();
+    DebugHelpers::tickNetwork();
 
     delay(10); 
 }

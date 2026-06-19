@@ -19,7 +19,7 @@ function renderAuthModal() {
 
     const modal = document.createElement('div');
     modal.id = "auth-modal-wrapper";
-    modal.className = "fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[999] animate-fade-in px-4 pointer-events-auto";
+    modal.className = "fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[200] animate-fade-in px-4 pointer-events-auto";
 
     modal.innerHTML = `
         <div class="${bgClass} rounded-3xl p-6 shadow-2xl border w-full max-w-sm relative overflow-hidden flex flex-col transition-colors">
@@ -127,7 +127,7 @@ function renderAuthModal() {
             const res = await IdentityStore.login(email, password);
             if (res.success) {
                 modal.remove();
-                window.location.reload(); 
+                setTimeout(() => window.location.reload(), 1000);
             } else {
                 showAlert(res.message);
             }

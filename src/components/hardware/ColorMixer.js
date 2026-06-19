@@ -1,6 +1,7 @@
 // src/components/hardware/ColorMixer.js
+import { showPrompt } from '../system/CustomDialogs.js';
 
-export function renderColorSpectrum(previewSlot, presetsSlot, manualSlot, currentSpectrum, onUpdateHook) {
+export function renderColorSpectrum(previewSlot, presetsSlot, manualSlot, customSlot, currentSpectrum, customColors, onUpdateHook, onSaveCustomHook, onDeleteCustomHook) {
     // 1. Live Preview Block
     const calcPreviewColor = (w, r, g, b) => {
         // Blends the white channel into the RGB channels to simulate WRGB output
@@ -62,13 +63,23 @@ export function renderColorSpectrum(previewSlot, presetsSlot, manualSlot, curren
 
     manualSlot.innerHTML = `
         <div class="bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800 space-y-5">
-            <h2 class="text-sm uppercase text-gray-400 font-semibold mb-2 flex items-center"><span class="text-white text-lg mr-2">🎚️</span> Manual Mix</h2>
+            <div class="flex justify-between items-center">
+                <h2 class="text-sm uppercase text-gray-400 font-semibold flex items-center"><span class="text-white text-lg mr-2">🎚️</span> Manual Mix</h2>
+                <button id="btn-save-custom" class="bg-aqua/10 text-aqua border border-aqua/30 hover:bg-aqua hover:text-black rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-colors active:scale-95">Save Mix</button>
+            </div>
             ${buildSlider("White", "text-white", currentSpectrum.w, "w")}
             ${buildSlider("Red", "text-red-500", currentSpectrum.r, "r")}
             ${buildSlider("Green", "text-green-500", currentSpectrum.g, "g")}
             ${buildSlider("Blue", "text-blue-500", currentSpectrum.b, "b")}
         </div>
     `;
+
+    manualSlot.querySelector("#btn-save-custom").onclick = async () => {
+        const name = await showPrompt("Save Custom Color", "e.g. Deep Sea Blue");
+        if (name && name.trim().length > 0) {
+            onSaveCustomHook(name.trim(), currentSpectrum);
+        }
+    };
 
     // Attach Slider Listeners
     ['w', 'r', 'g', 'b'].forEach(key => {
@@ -80,10 +91,61 @@ export function renderColorSpectrum(previewSlot, presetsSlot, manualSlot, curren
             // Live update the preview box purely in the DOM
             const newColors = { ...currentSpectrum, [key]: parseInt(e.target.value) };
             document.getElementById("color-preview-box").style.backgroundColor = calcPreviewColor(newColors.w, newColors.r, newColors.g, newColors.b);
+            
+            // Push to local IP instantly (fastUI = true)
+            onUpdateHook(newColors, true);
         });
 
         slider.addEventListener("change", (e) => {
-            onUpdateHook({ ...currentSpectrum, [key]: parseInt(e.target.value) });
+            onUpdateHook({ ...currentSpectrum, [key]: parseInt(e.target.value) }, false);
         });
     });
+
+    // 4. Custom Colors Block
+    if (customColors && customColors.length > 0) {
+        customSlot.innerHTML = `
+            <div class="bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800">
+                <h2 class="text-sm uppercase text-gray-400 font-semibold mb-4 flex items-center"><span class="text-white text-lg mr-2">✨</span> Custom Colors</h2>
+                <div class="grid grid-cols-2 gap-3" id="custom-color-grid">
+                    ${customColors.map((cc, i) => `
+                        <div class="relative group">
+                            <button data-index="${i}" class="custom-color-btn w-full bg-[#121212] border border-gray-700 hover:border-white rounded-xl py-3 px-2 flex flex-col items-center transition-all active:scale-95">
+                                <span class="text-white font-bold mb-2 truncate w-full text-center px-1 text-sm">${cc.name}</span>
+                                <div class="w-full flex justify-center space-x-1.5 mt-1 pb-1">
+                                    <div class="w-2.5 h-2.5 rounded-full bg-white shadow-[0_0_5px_rgba(255,255,255,0.5)]" style="opacity: ${Math.max(0.2, cc.w/100)}"></div>
+                                    <div class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.5)]" style="opacity: ${Math.max(0.2, cc.r/100)}"></div>
+                                    <div class="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.5)]" style="opacity: ${Math.max(0.2, cc.g/100)}"></div>
+                                    <div class="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-[0_0_5px_rgba(59,130,246,0.5)]" style="opacity: ${Math.max(0.2, cc.b/100)}"></div>
+                                </div>
+                            </button>
+                            <button data-index="${i}" class="delete-custom-btn absolute top-[-5px] right-[-5px] bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all z-10 shadow-md">
+                                &times;
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
+        customSlot.querySelectorAll(".custom-color-btn").forEach(btn => {
+            btn.onclick = (e) => {
+                if (e.target.closest(".delete-custom-btn")) return;
+                const idx = btn.getAttribute("data-index");
+                const cc = customColors[idx];
+                applyPreset(cc.w, cc.r, cc.g, cc.b);
+            };
+        });
+
+        customSlot.querySelectorAll(".delete-custom-btn").forEach(btn => {
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                const idx = btn.getAttribute("data-index");
+                onDeleteCustomHook(idx);
+            };
+        });
+        customSlot.classList.remove("hidden");
+    } else {
+        customSlot.innerHTML = "";
+        customSlot.classList.add("hidden");
+    }
 }

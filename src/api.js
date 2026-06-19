@@ -59,7 +59,8 @@ export const API = {
         }
 
         try {
-            const response = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/state.json?t=${Date.now()}`);
+            // 🔥 BANDWIDTH SAVER: Removed cache-busting timestamp to enable Firebase ETag caching (returns 304 Not Modified when idle)
+            const response = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/state.json`);
             if (!response.ok) throw new Error("Cloud HTTP Error");
             
             const cloudData = await response.json();

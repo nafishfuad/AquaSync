@@ -1,4 +1,9 @@
 // src/state.js
+import { db, auth } from './firebase-config.js';
+import { ref, get, query, orderByChild, equalTo } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
+
+const FIREBASE_URL = "https://aqua-fish-controller-default-rtdb.asia-southeast1.firebasedatabase.app";
 
 function formatTime(minutes) {
     const h = Math.floor(minutes / 60).toString().padStart(2, '0');
@@ -32,8 +37,8 @@ export const DeviceStore = {
                 this.devices = JSON.parse(storedData);
                 for (let hwid in this.devices) {
                     let dev = this.devices[hwid];
-                    if (!dev.companion) dev.companion = { current: "v1.0.0", latest: "Checking...", downloadUrl: "" };
-                    if (!dev.firmware) dev.firmware = { current: "v1.0.0", latest: "Checking...", downloadUrl: "" };
+                    if (!dev.companion) dev.companion = { current: "v1.5.0", latest: "Checking...", downloadUrl: "" };
+                    if (!dev.firmware) dev.firmware = { current: "v1.5.0", latest: "Checking...", downloadUrl: "" };
                 }
             }
         } catch (error) {
@@ -54,35 +59,46 @@ export const DeviceStore = {
         
         console.log("☁️ Fetching devices from cloud for:", uid);
         
-        // 🔥 THE FIX: Use pure REST API to find devices owned by your specific UID
-        const url = `https://aqua-fish-controller-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json?orderBy="ownerUid"&equalTo="${uid}"`;
-        
         try {
-            const response = await fetch(url);
-            if (response.ok) {
-                const cloudDevices = await response.json();
-                if (cloudDevices && Object.keys(cloudDevices).length > 0) {
-                    let addedNew = false;
-                    for (let hwid in cloudDevices) {
-                        if (!this.devices[hwid]) {
-                            // Map the cloud data to your local DeviceStore format
-                            const state = cloudDevices[hwid].state || {};
-                            const name = state.deviceName || "AquaSync Tank";
-                            const model = state.model || "AS-Base";
-                            this.addDevice(hwid, model, name);
-                            addedNew = true;
-                        }
+            // Use a proper Firebase query to only fetch devices owned by this user
+            // instead of downloading ALL devices and filtering client-side
+            const devicesRef = ref(db, 'devices');
+            const ownerQuery = query(devicesRef, orderByChild('ownerUid'), equalTo(uid));
+            const snapshot = await get(ownerQuery);
+            
+            if (snapshot.exists()) {
+                let addedNew = false;
+                
+                snapshot.forEach((childSnapshot) => {
+                    const hwid = childSnapshot.key;
+                    const deviceData = childSnapshot.val();
+                    
+                    if (!this.devices[hwid]) {
+                        // Check state node (where ESP32 writes) for device metadata
+                        const state = deviceData.state || {};
+                        const name = state.deviceName || "AquaSync Tank";
+                        const model = state.model || "AS-Standard";
+                        
+                        this.addDevice(hwid, model, name);
+                        addedNew = true;
                     }
-                    if (addedNew) {
-                        console.log("✅ Cloud devices synced!", Object.keys(cloudDevices));
-                        window.location.reload();
-                    }
+                });
+                
+                if (addedNew) {
+                    console.log("✅ Cloud devices synced to local store.");
+                    this.save();
+                    return true;
                 } else {
-                    console.log("☁️ No cloud devices found for this account.");
+                    console.log("☁️ No new cloud devices found for this account.");
+                    return false;
                 }
+            } else {
+                console.log("☁️ No cloud devices found for this account.");
+                return false;
             }
         } catch (e) {
             console.error("Failed to sync devices from cloud", e);
+            return false;
         }
     },
 
@@ -122,8 +138,9 @@ export const DeviceStore = {
                     week: { totalActive: "00h 00m", avgLight: "00h 00m", loadShedding: "00h 00m", dailyGraph: Array(7).fill(0) },
                     month: { totalActive: "00h 00m", avgLight: "00h 00m", loadShedding: "00h 00m", dailyGraph: Array(30).fill(0) }
                 },
-                companion: { current: "v1.0.0", latest: "Checking...", downloadUrl: "" },
-                firmware: { current: "v1.0.0", latest: "Checking...", downloadUrl: "" }
+                customColors: [],
+                companion: { current: "v1.5.0", latest: "Checking...", downloadUrl: "" },
+                firmware: { current: "v1.5.0", latest: "Checking...", downloadUrl: "" }
             };
         } else {
             this.devices[hwid].name = name;
@@ -141,6 +158,51 @@ export const DeviceStore = {
                 this.activeDeviceId = keys.length > 0 ? keys[0] : null;
             }
             this.save();
+        }
+    },
+
+    // Write ownerUid into Firebase so this device can be discovered from any browser
+    async claimDevice(hwid, uid) {
+        if (!hwid || !uid) return;
+        try {
+            await fetch(`${FIREBASE_URL}/devices/${hwid}/ownerUid.json`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(uid)
+            });
+            console.log("✅ Claimed device in cloud:", hwid);
+        } catch (e) {
+            console.error("❌ Failed to claim device:", hwid, e);
+        }
+    },
+
+    // Remove ownerUid from Firebase when a device is removed or factory-reset
+    async unclaimDevice(hwid) {
+        if (!hwid) return;
+        try {
+            await fetch(`${FIREBASE_URL}/devices/${hwid}/ownerUid.json`, {
+                method: 'DELETE'
+            });
+            console.log("🗑️ Unclaimed device from cloud:", hwid);
+        } catch (e) {
+            console.error("❌ Failed to unclaim device:", hwid, e);
+        }
+    },
+
+    // Claim ALL locally-known (non-demo) devices for the given uid
+    async claimAllLocalDevices(uid) {
+        if (!uid) return;
+        for (const hwid of Object.keys(this.devices)) {
+            if (this.devices[hwid].isDummy) continue;
+            try {
+                const res = await fetch(`${FIREBASE_URL}/devices/${hwid}/ownerUid.json`);
+                const existingOwner = await res.json();
+                if (!existingOwner) {
+                    await this.claimDevice(hwid, uid);
+                }
+            } catch (e) {
+                console.error("Migration check failed for", hwid, e);
+            }
         }
     },
 
@@ -188,17 +250,22 @@ export const DeviceStore = {
                 d[0] = Math.max(d[0] || 0, todayTotal);
 
                 let weekTotal = 0;
+                let weekBlackout = 0;
                 const weekGraphData = [];
                 let weekDivisor = 0;
+                const dailyAwake = toArray(newMetrics.dailyAwakeData, 30, 1440);
+                
                 for (let i = 0; i < 7; i++) {
                     const val = d[i] || 0;
                     weekTotal += val;
                     if (val > 0) weekDivisor++;
                     weekGraphData.unshift(+(val / 60).toFixed(1));
+                    if (dailyAwake[i] > 0) weekBlackout += Math.max(0, 1440 - dailyAwake[i]);
                 }
                 if (weekDivisor === 0) weekDivisor = 1;
 
                 let monthTotal = 0;
+                let monthBlackout = 0;
                 const monthGraphData = [];
                 let monthDivisor = 0;
                 for (let i = 0; i < 30; i++) {
@@ -206,30 +273,37 @@ export const DeviceStore = {
                     monthTotal += val;
                     if (val > 0) monthDivisor++;
                     monthGraphData.unshift(+(val / 60).toFixed(1));
+                    if (dailyAwake[i] > 0) monthBlackout += Math.max(0, 1440 - dailyAwake[i]);
                 }
                 if (monthDivisor === 0) monthDivisor = 1;
 
                 const lightOutageMins = newMetrics.lightLoadSheddingToday || 0;
                 const totalOutageMins = newMetrics.totalLoadSheddingToday || 0;
+                
+                // Add today's total outage to the week and month if it's not already in dailyAwake[0]
+                weekBlackout += totalOutageMins;
+                monthBlackout += totalOutageMins;
 
                 this.devices[hwid].analyticsData = {
                     today: { 
                         totalActive: formatTime(todayTotal), 
                         loadShedding: formatTime(lightOutageMins), 
+                        totalBlackout: formatTime(totalOutageMins),
                         hourlyGraph: h,
                         awakeData: awake 
                     },
                     week: { 
                         totalActive: formatTime(weekTotal), 
                         avgLight: formatTime(Math.round(weekTotal / weekDivisor)), 
-                        loadShedding: formatTime(lightOutageMins), 
+                        loadShedding: "00h 00m", // We don't have accurate historical light shedding
+                        totalBlackout: formatTime(weekBlackout),
                         dailyGraph: weekGraphData 
                     },
                     month: { 
                         totalActive: formatTime(monthTotal), 
                         avgLight: formatTime(Math.round(monthTotal / monthDivisor)), 
-                        loadShedding: formatTime(lightOutageMins), 
-                        totalBlackout: formatTime(totalOutageMins),
+                        loadShedding: "00h 00m",
+                        totalBlackout: formatTime(monthBlackout),
                         dailyGraph: monthGraphData
                     }
                 };
@@ -276,81 +350,62 @@ export const IdentityStore = {
     isGuest: true,
 
     init() {
-        // 🔥 THE FIX: Check browser memory on load so you stay logged in!
-        const savedSession = localStorage.getItem("aquasync_session");
-        
-        if (savedSession) {
-            try {
-                this.currentUser = JSON.parse(savedSession);
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                this.currentUser = {
+                    email: user.email,
+                    uid: user.uid,
+                    token: user.accessToken
+                };
                 this.isGuest = false;
-                console.log("🔒 Simulated session restored for:", this.currentUser.email);
-            } catch (e) {
+                console.log("🔒 Session active for:", this.currentUser.email);
+            } else {
                 this.currentUser = null;
                 this.isGuest = true;
+                console.log("🔒 No active session.");
             }
-        } else {
-            this.currentUser = null;
-            this.isGuest = true;
-            console.log("🔒 No active session.");
-        }
-        
-        // Broadcast that Auth has loaded so main.js knows to redraw the Account Panel!
-        window.dispatchEvent(new CustomEvent("aquasync_auth_resolved"));
+            // Broadcast that Auth has loaded so main.js knows to redraw the Account Panel!
+            window.dispatchEvent(new CustomEvent("aquasync_auth_resolved"));
+        });
     },
 
     async login(email, password) {
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 1200));
-
-        if (email && password) {
-            // 🔥 THE FIX: Generate a consistent UID based on the email address!
-            // This ensures you have the exact same UID across all browsers and devices.
-            const consistentUid = "user_" + email.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-            this.currentUser = { 
-                email: email, 
-                uid: consistentUid,
-                token: "mock_secure_token_123" 
-            };
-            this.isGuest = false;
-            
-            localStorage.setItem("aquasync_session", JSON.stringify(this.currentUser));
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
             return { success: true };
+        } catch (error) {
+            return { success: false, message: error.message };
         }
-        return { success: false, message: "Invalid email or password. Please try again." };
     },
 
     async signup(email, password) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        if (email.includes("@") && password.length >= 6) {
-            
-            const consistentUid = "user_" + email.toLowerCase().replace(/[^a-z0-9]/g, '');
-            
-            this.currentUser = { 
-                email: email, 
-                uid: consistentUid,
-                token: "mock_secure_token_123" 
-            };
-            this.isGuest = false;
-            localStorage.setItem("aquasync_session", JSON.stringify(this.currentUser));
+        try {
+            await createUserWithEmailAndPassword(auth, email, password);
             return { success: true };
+        } catch (error) {
+            return { success: false, message: error.message };
         }
-        return { success: false, message: "Password must be at least 6 characters." };
     },
 
     async resetPassword(email) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        if (email) {
+        try {
+            await sendPasswordResetEmail(auth, email);
             return { success: true, message: "Password reset link sent to " + email };
+        } catch (error) {
+            return { success: false, message: error.message };
         }
-        return { success: false, message: "Please enter a valid email address." };
     },
 
-    logout() {
-        this.currentUser = null;
-        this.isGuest = true;
-        // Wipe it from memory
-        localStorage.removeItem("aquasync_session");
-        window.location.reload();
+    async logout() {
+        try {
+            await signOut(auth);
+            this.currentUser = null;
+            this.isGuest = true;
+            localStorage.removeItem("aquasync_ecosystem");
+            localStorage.removeItem("aquasync_active_hwid");
+            window.location.reload();
+        } catch (error) {
+            console.error("Logout failed", error);
+        }
     }
 };

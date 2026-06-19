@@ -110,7 +110,7 @@ export function renderSchedulesStack(container, device, commandHook) {
         const dimCard = createCard('Cinematic Dimming', '<span class="text-aqua text-lg">🌊</span>', 'border-gray-800', true, m.isDimmerEnabled, 'isDimmerEnabled', 'Lights will instantly turn ON and OFF without ramping.', dimmerHTML);
         
         if (m.isDimmerEnabled) {
-            dimCard.querySelector('#inp-max-bright').onchange = (e) => commandHook({ maxBrightness: parseInt(e.target.value) });
+            dimCard.querySelector('#inp-max-bright').oninput = (e) => commandHook({ maxBrightness: parseInt(e.target.value) }, true);
             bindStepper('sunrise', 'sunriseMins', m.sunriseMins, 5, 0, 120);
             bindStepper('sunset', 'sunsetMins', m.sunsetMins, 5, 0, 120);
         }
@@ -165,7 +165,7 @@ export function renderSchedulesStack(container, device, commandHook) {
         if (m.isFanEnabled) {
             fanCard.querySelector('#inp-fan-start').onchange = (e) => commandHook({ fanOnTime: e.target.value });
             fanCard.querySelector('#inp-fan-end').onchange = (e) => commandHook({ fanOffTime: e.target.value });
-            fanCard.querySelector('#inp-fan-speed').onchange = (e) => commandHook({ fanSpeed: parseInt(e.target.value) });
+            fanCard.querySelector('#inp-fan-speed').oninput = (e) => commandHook({ fanSpeed: parseInt(e.target.value) }, true);
         }
     }
 

@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-const String FW_VERSION = "v1.0.0";
+const String FW_VERSION = "v1.5.0";
 const int CURRENT_SCHEMA_VERSION = 2;
 const String DEVICE_MODEL = "AS-Standard";
 const String FIREBASE_URL = "https://aqua-fish-controller-default-rtdb.asia-southeast1.firebasedatabase.app";
@@ -47,6 +47,7 @@ struct TankSettings {
     int totalLoadSheddingToday;     
     int lightLoadSheddingToday;     
     int lastTrackedDay;             
+    char outageEventsToday[128];    // Stores "HH:MM-HH:MM,..." for UI timeline rendering
 };
 
 #endif

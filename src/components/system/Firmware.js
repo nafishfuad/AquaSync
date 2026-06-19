@@ -1,6 +1,7 @@
 // src/components/system/Firmware.js
 
 import { DeviceStore } from '../../state.js';
+import { showConfirm } from './CustomDialogs.js';
 
 export function renderFirmware(container, fwState, commandHook) {
     const div = document.createElement('div');
@@ -66,8 +67,8 @@ export function renderFirmware(container, fwState, commandHook) {
 
     // STEP 1: Download
     if (btnDl && !isStaged && isUpdateAvailable) {
-        btnDl.onclick = () => {
-            if (confirm("Begin OTA firmware download? The device will pull the update from the cloud.")) {
+        btnDl.onclick = async () => {
+            if (await showConfirm("Update Firmware", "Begin OTA firmware download? The device will pull the update from the cloud.")) {
 
                 // Lock the Download button
                 btnDl.innerHTML = `<span class="animate-spin inline-block mr-2">⏳</span> Downloading...`;
@@ -88,8 +89,8 @@ export function renderFirmware(container, fwState, commandHook) {
 
     // STEP 2: Install & Reboot
     if (btnInstall && isStaged) {
-        btnInstall.onclick = () => {
-            if (confirm("Install firmware? The device will reboot to apply the new system.")) {
+        btnInstall.onclick = async () => {
+            if (await showConfirm("Install Firmware", "Install firmware? The device will reboot to apply the new system.")) {
 
                 // Lock the Install button
                 btnInstall.innerHTML = `<span class="animate-spin inline-block mr-2">⏳</span> Installing...`;
