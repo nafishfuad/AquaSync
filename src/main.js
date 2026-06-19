@@ -1,55 +1,58 @@
 // src/main.js
 
-import { DeviceStore, IdentityStore } from './state.js'; // 🔥 Added IdentityStore
+import { DeviceStore, IdentityStore } from './state.js'; 
 import { API } from './api.js';
 import { buildInsightsPanel, buildControlPanel, buildSystemPanel, buildColorPanel } from './ui-factory.js';
 import { renderEmptyState, renderPairingWizard } from './components/system/PairingWizard.js';
 import { initTopNav } from './components/system/TopNav.js';
 import { debounce } from './utils.js'; 
 import { showOutageModal } from './components/system/OutageModal.js'; 
-import { initAuthModal } from './components/system/AuthModal.js'; // 🔥 Added initAuthModal
+import { initAuthModal } from './components/system/AuthModal.js'; 
 
 const AquaSync = {
     async init() {
         console.log("🌊 AquaSync Ecosystem Initializing...");
 
-        // 🔥 1. Initialize the new Authentication System
         initAuthModal();
-        IdentityStore.init();
 
-        // 🔥 THE FIX: Listen for Firebase to finish restoring the session from browser memory!
-        // 🔥 THE FIX: Listen for Firebase to finish restoring the session
+        // 🔥 THE FIX: Set up the "ears" BEFORE initializing the auth system!
         window.addEventListener("aquasync_auth_resolved", async () => {
             if (IdentityStore.currentUser) {
                 // If user is logged in, fetch their devices from the cloud!
                 await DeviceStore.syncFromCloud(IdentityStore.currentUser.uid);
             }
-            initTopNav();           // Redraws the Top Nav bar profile
-            this.renderActiveUI();  // Redraws the Account Card
+            
+            // Redraw UI after cloud sync attempt
+            if (Object.keys(DeviceStore.devices).length === 0) {
+                if (typeof renderEmptyState === 'function') renderEmptyState();
+            } else {
+                initTopNav();           
+                this.renderActiveUI();  
+            }
         });
 
-        // 🔥 2. Listen for real-time Firebase socket updates from the dev branch
         window.addEventListener("aquasync_stream_update", () => {
             this.setConnectionStatus("cloud");
             this.renderActiveUI();
         });
 
-        // 3. Boot the local hardware store
+        // Initialize local storage devices
         DeviceStore.init();
         
+        // NOW initialize Auth (This will instantly trigger the listener we just created above)
+        IdentityStore.init();
+
+        // Standard local boot routine (Will be gracefully overridden if cloud sync finds devices)
         if (Object.keys(DeviceStore.devices).length === 0) {
-            // Hide the app pages
             ['page-insights', 'page-control', 'page-color', 'page-network'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.add('hidden');
             });
 
-            // Hide the bottom tab bar
             document.querySelectorAll("nav").forEach(nav => {
                 if (nav.id !== "slot-top-nav") nav.classList.add("hidden");
             });
 
-            // Force the Top Nav to be visible AND elevate it above the splash overlay!
             const topNav = document.getElementById("slot-top-nav");
             if (topNav) {
                 topNav.classList.remove("hidden");
@@ -58,12 +61,11 @@ const AquaSync = {
             }
             
             initTopNav(); 
-            renderEmptyState();
+            if (typeof renderEmptyState === 'function') renderEmptyState();
             return; 
         }
 
         initTopNav();
-        
         const lastOpenTab = localStorage.getItem('aquasync_active_tab') || 'page-control';
         this.switchTab(lastOpenTab); 
         

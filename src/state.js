@@ -53,18 +53,33 @@ export const DeviceStore = {
         if (!uid) return;
         
         console.log("☁️ Fetching devices from cloud for:", uid);
-        const userDevicesRef = ref(db, `users/${uid}/devices`);
+        
+        // 🔥 THE FIX: Use pure REST API to find devices owned by your specific UID
+        const url = `https://aqua-fish-controller-default-rtdb.asia-southeast1.firebasedatabase.app/devices.json?orderBy="ownerUid"&equalTo="${uid}"`;
         
         try {
-            const snapshot = await get(userDevicesRef);
-            if (snapshot.exists()) {
-                const cloudDevices = snapshot.val();
-                // Merge cloud devices into local storage
-                this.devices = { ...this.devices, ...cloudDevices };
-                this.save();
-                console.log("✅ Cloud devices synced:", Object.keys(cloudDevices));
-                // Reload UI to show the dashboard
-                window.location.reload();
+            const response = await fetch(url);
+            if (response.ok) {
+                const cloudDevices = await response.json();
+                if (cloudDevices && Object.keys(cloudDevices).length > 0) {
+                    let addedNew = false;
+                    for (let hwid in cloudDevices) {
+                        if (!this.devices[hwid]) {
+                            // Map the cloud data to your local DeviceStore format
+                            const state = cloudDevices[hwid].state || {};
+                            const name = state.deviceName || "AquaSync Tank";
+                            const model = state.model || "AS-Base";
+                            this.addDevice(hwid, model, name);
+                            addedNew = true;
+                        }
+                    }
+                    if (addedNew) {
+                        console.log("✅ Cloud devices synced!", Object.keys(cloudDevices));
+                        window.location.reload();
+                    }
+                } else {
+                    console.log("☁️ No cloud devices found for this account.");
+                }
             }
         } catch (e) {
             console.error("Failed to sync devices from cloud", e);
@@ -288,15 +303,17 @@ export const IdentityStore = {
         await new Promise(resolve => setTimeout(resolve, 1200));
 
         if (email && password) {
-            // Create a secure local session
+            // 🔥 THE FIX: Generate a consistent UID based on the email address!
+            // This ensures you have the exact same UID across all browsers and devices.
+            const consistentUid = "user_" + email.toLowerCase().replace(/[^a-z0-9]/g, '');
+
             this.currentUser = { 
                 email: email, 
-                uid: "user_" + Math.random().toString(36).substr(2, 9),
+                uid: consistentUid,
                 token: "mock_secure_token_123" 
             };
             this.isGuest = false;
             
-            // Save it so it survives page refreshes
             localStorage.setItem("aquasync_session", JSON.stringify(this.currentUser));
             return { success: true };
         }
@@ -306,6 +323,16 @@ export const IdentityStore = {
     async signup(email, password) {
         await new Promise(resolve => setTimeout(resolve, 1500));
         if (email.includes("@") && password.length >= 6) {
+            
+            const consistentUid = "user_" + email.toLowerCase().replace(/[^a-z0-9]/g, '');
+            
+            this.currentUser = { 
+                email: email, 
+                uid: consistentUid,
+                token: "mock_secure_token_123" 
+            };
+            this.isGuest = false;
+            localStorage.setItem("aquasync_session", JSON.stringify(this.currentUser));
             return { success: true };
         }
         return { success: false, message: "Password must be at least 6 characters." };
