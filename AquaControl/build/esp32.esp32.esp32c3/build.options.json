@@ -1,10 +1,10 @@
 {
-  "additionalFiles": "..\\..,..\\..,..\\..,..\\..,..\\..,..\\..\\..,..\\..\\..,..\\..\\..,..\\..\\..,..\\..\\..",
+  "additionalFiles": "..\\..,..\\..,..\\..,..\\..,..\\..,..\\..\\..,..\\..\\..,..\\..\\..,..\\..\\..,..\\..\\..,..\\..",
   "builtInLibrariesFolders": "C:\\Users\\nafis\\AppData\\Local\\Arduino15\\libraries",
   "compiler.optimization_flags": "-Os",
   "customBuildProperties": "",
-  "fqbn": "esp32:esp32:esp32c3:UploadSpeed=115200,CDCOnBoot=cdc,CPUFreq=160,FlashFreq=80,FlashMode=dio,FlashSize=4M,PartitionScheme=min_spiffs,DebugLevel=none,EraseFlash=all,JTAGAdapter=default,ZigbeeMode=default",
+  "fqbn": "esp32:esp32:esp32c3:UploadSpeed=921600,CDCOnBoot=cdc,CPUFreq=160,FlashFreq=80,FlashMode=dio,FlashSize=4M,PartitionScheme=min_spiffs,DebugLevel=error,EraseFlash=all,JTAGAdapter=default,ZigbeeMode=default",
   "hardwareFolders": "C:\\Users\\nafis\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.3.10,C:\\Users\\nafis\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\3.3.10",
-  "otherLibrariesFolders": "c:\\Users\\nafis\\OneDrive\\Documents\\Arduino\\libraries",
-  "sketchLocation": "C:\\Users\\nafis\\OneDrive\\Desktop\\AquaControl"
+  "otherLibrariesFolders": "c:\\Users\\nafis\\Documents\\Arduino\\libraries",
+  "sketchLocation": "C:\\Users\\nafis\\Documents\\AquaSync\\AquaControl"
 }
