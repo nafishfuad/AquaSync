@@ -4,7 +4,7 @@ import { DeviceStore, IdentityStore } from '../../state.js';
 import { renderAboutModal } from './AboutModal.js';
 import { API } from '../../api.js';
 import { renderPairingWizard, renderEmptyState, setupDemoDevice } from './PairingWizard.js';
-import { showConfirm } from './CustomDialogs.js';
+import { showConfirm, showPrompt } from './CustomDialogs.js';
 
 export function initTopNav() {
     const slot = document.getElementById("slot-top-nav");
@@ -171,7 +171,7 @@ export function initTopNav() {
                 const targetHwid = e.target.closest('button').getAttribute("data-hwid");
                 const currentName = e.target.closest('button').getAttribute("data-name");
                 
-                const newName = prompt("Enter a new name for your device:", currentName);
+                const newName = await showPrompt("Rename Device", "Enter new name...", currentName);
                 if (newName && newName.trim() !== "" && newName !== currentName) {
                     const cleanName = newName.trim().substring(0, 30);
                     

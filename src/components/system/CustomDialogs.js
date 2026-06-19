@@ -11,13 +11,13 @@ function createDialogWrapper() {
     return wrapper;
 }
 
-export function showPrompt(title, placeholder = "") {
+export function showPrompt(title, placeholder = "", defaultValue = "") {
     return new Promise((resolve) => {
         const wrapper = createDialogWrapper();
         wrapper.innerHTML = `
             <div class="bg-cardbg rounded-3xl p-6 shadow-2xl border border-gray-800 w-full max-w-sm flex flex-col transform scale-95 transition-transform duration-300" id="custom-dialog-inner">
                 <h3 class="text-white font-bold text-lg mb-4 tracking-wide">${title}</h3>
-                <input type="text" id="dialog-prompt-input" class="w-full bg-[#121212] border border-gray-700 text-white rounded-xl px-4 py-3 outline-none focus:border-aqua transition-colors mb-6 text-sm" placeholder="${placeholder}" autocomplete="off" />
+                <input type="text" id="dialog-prompt-input" class="w-full bg-[#121212] border border-gray-700 text-white rounded-xl px-4 py-3 outline-none focus:border-aqua transition-colors mb-6 text-sm" placeholder="${placeholder}" value="${defaultValue}" autocomplete="off" />
                 <div class="flex space-x-3">
                     <button id="dialog-btn-cancel" class="flex-1 bg-[#121212] hover:bg-gray-800 border border-gray-700 text-gray-400 hover:text-white py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors active:scale-95">Cancel</button>
                     <button id="dialog-btn-submit" class="flex-1 bg-aqua/10 hover:bg-aqua border border-aqua/30 hover:border-aqua text-aqua hover:text-black py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors active:scale-95">Save</button>
