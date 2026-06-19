@@ -6,7 +6,8 @@ export function renderAccount(container) {
     const div = document.createElement('div');
     div.className = "bg-cardbg rounded-2xl p-5 shadow-lg border border-gray-800 mb-6";
 
-    const user = IdentityStore.user;
+    // 🔥 THE FIX: Use IdentityStore.currentUser instead of IdentityStore.user!
+    const user = IdentityStore.currentUser;
 
     if (user) {
         // User is Logged In
@@ -29,7 +30,12 @@ export function renderAccount(container) {
 
         div.querySelector('#btn-sign-out').onclick = () => {
             if (confirm("Are you sure you want to sign out? You will lose remote cloud access until you sign back in.")) {
-                IdentityStore.logout();
+                // Ensure this method exactly matches your state.js implementation (logout or signOut)
+                if (typeof IdentityStore.logout === 'function') {
+                    IdentityStore.logout();
+                } else if (typeof IdentityStore.signOut === 'function') {
+                    IdentityStore.signOut();
+                }
             }
         };
     } else {

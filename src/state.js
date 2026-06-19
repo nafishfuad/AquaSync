@@ -49,6 +49,28 @@ export const DeviceStore = {
         }
     },
 
+    async syncFromCloud(uid) {
+        if (!uid) return;
+        
+        console.log("☁️ Fetching devices from cloud for:", uid);
+        const userDevicesRef = ref(db, `users/${uid}/devices`);
+        
+        try {
+            const snapshot = await get(userDevicesRef);
+            if (snapshot.exists()) {
+                const cloudDevices = snapshot.val();
+                // Merge cloud devices into local storage
+                this.devices = { ...this.devices, ...cloudDevices };
+                this.save();
+                console.log("✅ Cloud devices synced:", Object.keys(cloudDevices));
+                // Reload UI to show the dashboard
+                window.location.reload();
+            }
+        } catch (e) {
+            console.error("Failed to sync devices from cloud", e);
+        }
+    },
+
     addDevice(hwid, model, name) {
         if (!this.devices[hwid]) {
             this.devices[hwid] = {
@@ -127,13 +149,11 @@ export const DeviceStore = {
         if (newMetrics) {
             this.devices[hwid].metrics = { ...this.devices[hwid].metrics, ...newMetrics };
 
-            // Parse deep Analytics if supplied
             if (newMetrics.hourlyData || newMetrics.dailyData) {
                 const h = toArray(newMetrics.hourlyData, 24, 0);
                 const d = toArray(newMetrics.dailyData, 30, 0);
                 const awake = toArray(newMetrics.awakeData, 24, 1);
 
-                // 1. Calculate what is currently saved in the Firebase Array
                 let sumOfFirebaseHours = 0;
                 for (let i = 0; i < 24; i++) {
                     if (h[i] > 60) h[i] = 60;
@@ -143,19 +163,13 @@ export const DeviceStore = {
                 let todayTotal = sumOfFirebaseHours;
                 const currentHour = new Date().getHours();
 
-                // 🔥 THE FIX: Calculate the delta between the Live Total and the Firebase Array
                 if (newMetrics.liveActiveMins !== undefined && newMetrics.liveActiveMins > sumOfFirebaseHours) {
                     const unpushedMinutes = newMetrics.liveActiveMins - sumOfFirebaseHours;
-                    
-                    // Add only the unpushed minutes to the current hour on the graph
                     h[currentHour] += unpushedMinutes;
                     if (h[currentHour] > 60) h[currentHour] = 60; 
-                    
-                    // Set the text total to the true live master total
                     todayTotal = newMetrics.liveActiveMins;
                 }
 
-                // Inject the true live total into the 7-Day and 30-Day graphs
                 d[0] = Math.max(d[0] || 0, todayTotal);
 
                 let weekTotal = 0;
@@ -223,50 +237,67 @@ export const DeviceStore = {
 
     save() {
         try {
-            localStorage.setItem("aquasync_ecosystem", JSON.stringify(this.devices));
+            const clone = JSON.parse(JSON.stringify(this.devices));
+            for (let id in clone) clone[id].historicalData = [];
+            localStorage.setItem("aquasync_ecosystem", JSON.stringify(clone));
+            
             if (this.activeDeviceId) {
                 localStorage.setItem("aquasync_active_hwid", this.activeDeviceId);
             } else {
                 localStorage.removeItem("aquasync_active_hwid");
             }
-            console.log("💾 DeviceStore safely secured in browser storage.");
         } catch (error) {
-            console.error("Failed to save device store to localStorage", error);
+            console.error("Failed to save device store", error);
         }
     }
 };
 
-// --- Add this to the BOTTOM of src/state.js ---
+// ==========================================
+// 🔥 SDK-FREE AUTH: Simulated Identity Store
+// ==========================================
 
 export const IdentityStore = {
-    user: null,
+    currentUser: null, 
+    isGuest: true,
 
     init() {
-        try {
-            const storedSession = localStorage.getItem("aquasync_session");
-            if (storedSession) {
-                this.user = JSON.parse(storedSession);
-                console.log("🔐 Logged in as:", this.user.email);
+        // 🔥 THE FIX: Check browser memory on load so you stay logged in!
+        const savedSession = localStorage.getItem("aquasync_session");
+        
+        if (savedSession) {
+            try {
+                this.currentUser = JSON.parse(savedSession);
+                this.isGuest = false;
+                console.log("🔒 Simulated session restored for:", this.currentUser.email);
+            } catch (e) {
+                this.currentUser = null;
+                this.isGuest = true;
             }
-        } catch (e) {
-            console.error("Auth session corrupted", e);
-            this.logout();
+        } else {
+            this.currentUser = null;
+            this.isGuest = true;
+            console.log("🔒 No active session.");
         }
+        
+        // Broadcast that Auth has loaded so main.js knows to redraw the Account Panel!
+        window.dispatchEvent(new CustomEvent("aquasync_auth_resolved"));
     },
 
-    // 🚀 Simulated Firebase Auth Login (Fast UI bridging)
     async login(email, password) {
         // Simulate network delay
         await new Promise(resolve => setTimeout(resolve, 1200));
 
         if (email && password) {
             // Create a secure local session
-            this.user = { 
+            this.currentUser = { 
                 email: email, 
                 uid: "user_" + Math.random().toString(36).substr(2, 9),
                 token: "mock_secure_token_123" 
             };
-            localStorage.setItem("aquasync_session", JSON.stringify(this.user));
+            this.isGuest = false;
+            
+            // Save it so it survives page refreshes
+            localStorage.setItem("aquasync_session", JSON.stringify(this.currentUser));
             return { success: true };
         }
         return { success: false, message: "Invalid email or password. Please try again." };
@@ -289,7 +320,9 @@ export const IdentityStore = {
     },
 
     logout() {
-        this.user = null;
+        this.currentUser = null;
+        this.isGuest = true;
+        // Wipe it from memory
         localStorage.removeItem("aquasync_session");
         window.location.reload();
     }

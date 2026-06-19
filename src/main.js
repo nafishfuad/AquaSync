@@ -17,6 +17,17 @@ const AquaSync = {
         initAuthModal();
         IdentityStore.init();
 
+        // 🔥 THE FIX: Listen for Firebase to finish restoring the session from browser memory!
+        // 🔥 THE FIX: Listen for Firebase to finish restoring the session
+        window.addEventListener("aquasync_auth_resolved", async () => {
+            if (IdentityStore.currentUser) {
+                // If user is logged in, fetch their devices from the cloud!
+                await DeviceStore.syncFromCloud(IdentityStore.currentUser.uid);
+            }
+            initTopNav();           // Redraws the Top Nav bar profile
+            this.renderActiveUI();  // Redraws the Account Card
+        });
+
         // 🔥 2. Listen for real-time Firebase socket updates from the dev branch
         window.addEventListener("aquasync_stream_update", () => {
             this.setConnectionStatus("cloud");
