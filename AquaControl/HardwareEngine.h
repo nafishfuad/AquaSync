@@ -48,6 +48,7 @@ private:
         // 🔥 CRITICAL FIX: Ensure 30-day History Arrays are written to Flash
         _prefs.putBytes("actHist", settings.activeMinutesHistory, sizeof(settings.activeMinutesHistory));
         _prefs.putBytes("awkHist", settings.awakeMinutesHistory, sizeof(settings.awakeMinutesHistory));
+        _prefs.putBytes("lgtHist", settings.lightLostHistory, sizeof(settings.lightLostHistory));
         
         _prefs.putInt("totLS", settings.totalLoadSheddingToday);
         _prefs.putInt("lgtLS", settings.lightLoadSheddingToday);
@@ -224,6 +225,7 @@ public:
             // 🔥 CRITICAL FIX: Load History on Boot
             _prefs.getBytes("actHist", settings.activeMinutesHistory, sizeof(settings.activeMinutesHistory));
             _prefs.getBytes("awkHist", settings.awakeMinutesHistory, sizeof(settings.awakeMinutesHistory));
+            _prefs.getBytes("lgtHist", settings.lightLostHistory, sizeof(settings.lightLostHistory));
             
             settings.totalLoadSheddingToday = _prefs.getInt("totLS", 0);
             settings.lightLoadSheddingToday = _prefs.getInt("lgtLS", 0);
@@ -303,12 +305,14 @@ public:
                 for (int i = 29; i >= daysMissed; i--) {
                     settings.activeMinutesHistory[i] = settings.activeMinutesHistory[i - daysMissed];
                     settings.awakeMinutesHistory[i] = settings.awakeMinutesHistory[i - daysMissed];
+                    settings.lightLostHistory[i] = settings.lightLostHistory[i - daysMissed];
                 }
                 
                 // Backfill missed offline days with 0s
                 for (int i = 1; i < daysMissed; i++) {
                     settings.activeMinutesHistory[i] = 0;
                     settings.awakeMinutesHistory[i] = 0;
+                    settings.lightLostHistory[i] = 0;
                 }
                 
                 uint16_t yTotal = 0;
@@ -322,6 +326,7 @@ public:
                 
                 settings.activeMinutesHistory[0] = yTotal;
                 settings.awakeMinutesHistory[0] = yAwake;
+                settings.lightLostHistory[0] = settings.lightLoadSheddingToday;
                 settings.totalLoadSheddingToday = 0; 
                 settings.lightLoadSheddingToday = 0;
                 settings.outageEventsToday[0] = '\0';

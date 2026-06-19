@@ -233,7 +233,7 @@ export const DeviceStore = {
             }
 
             // Sync the device name across all clients if it was changed elsewhere
-            if (newMetrics.deviceName && this.devices[hwid].name !== newMetrics.deviceName) {
+                    if (newMetrics.deviceName && this.devices[hwid].name !== newMetrics.deviceName) {
                 this.devices[hwid].name = newMetrics.deviceName;
             }
 
@@ -242,16 +242,16 @@ export const DeviceStore = {
                 const d = toArray(newMetrics.dailyData, 30, 0);
                 const awake = toArray(newMetrics.awakeData, 24, 1);
 
-                let sumOfFirebaseHours = 0;
-                for (let i = 0; i < 24; i++) {
-                    if (h[i] > 60) h[i] = 60;
-                    sumOfFirebaseHours += h[i];
+                let todayTotal = 0;
+                for(let i=0; i<24; i++) {
+                    todayTotal += newMetrics.activeData[i] || 0;
                 }
 
-                let todayTotal = sumOfFirebaseHours;
+                // Inject live active minutes into today's graph
                 const currentHour = new Date().getHours();
-
-                if (newMetrics.liveActiveMins !== undefined && newMetrics.liveActiveMins > sumOfFirebaseHours) {
+                if (newMetrics.liveActiveMins > todayTotal) {
+                    let sumOfFirebaseHours = 0;
+                    for(let i=0; i<24; i++) if (i !== currentHour) sumOfFirebaseHours += newMetrics.activeData[i] || 0;
                     const unpushedMinutes = newMetrics.liveActiveMins - sumOfFirebaseHours;
                     h[currentHour] += unpushedMinutes;
                     if (h[currentHour] > 60) h[currentHour] = 60; 
@@ -262,9 +262,11 @@ export const DeviceStore = {
 
                 let weekTotal = 0;
                 let weekBlackout = 0;
+                let weekLostLight = 0;
                 const weekGraphData = [];
                 let weekDivisor = 0;
                 const dailyAwake = toArray(newMetrics.dailyAwakeData, 30, 1440);
+                const dailyLostLight = toArray(newMetrics.dailyLostLightData, 30, 0);
                 
                 for (let i = 0; i < 7; i++) {
                     const val = d[i] || 0;
@@ -272,11 +274,13 @@ export const DeviceStore = {
                     if (val > 0) weekDivisor++;
                     weekGraphData.unshift(+(val / 60).toFixed(1));
                     if (dailyAwake[i] > 0) weekBlackout += Math.max(0, 1440 - dailyAwake[i]);
+                    weekLostLight += dailyLostLight[i] || 0;
                 }
                 if (weekDivisor === 0) weekDivisor = 1;
 
                 let monthTotal = 0;
                 let monthBlackout = 0;
+                let monthLostLight = 0;
                 const monthGraphData = [];
                 let monthDivisor = 0;
                 for (let i = 0; i < 30; i++) {
@@ -285,6 +289,7 @@ export const DeviceStore = {
                     if (val > 0) monthDivisor++;
                     monthGraphData.unshift(+(val / 60).toFixed(1));
                     if (dailyAwake[i] > 0) monthBlackout += Math.max(0, 1440 - dailyAwake[i]);
+                    monthLostLight += dailyLostLight[i] || 0;
                 }
                 if (monthDivisor === 0) monthDivisor = 1;
 
@@ -294,6 +299,10 @@ export const DeviceStore = {
                 // Add today's total outage to the week and month if it's not already in dailyAwake[0]
                 weekBlackout += totalOutageMins;
                 monthBlackout += totalOutageMins;
+                
+                // Add today's lost light to the week and month if it's not already in dailyLostLight[0]
+                weekLostLight += lightOutageMins;
+                monthLostLight += lightOutageMins;
 
                 this.devices[hwid].analyticsData = {
                     today: { 
@@ -306,14 +315,14 @@ export const DeviceStore = {
                     week: { 
                         totalActive: formatTime(weekTotal), 
                         avgLight: formatTime(Math.round(weekTotal / weekDivisor)), 
-                        loadShedding: "00h 00m", // We don't have accurate historical light shedding
+                        loadShedding: formatTime(weekLostLight),
                         totalBlackout: formatTime(weekBlackout),
                         dailyGraph: weekGraphData 
                     },
                     month: { 
                         totalActive: formatTime(monthTotal), 
                         avgLight: formatTime(Math.round(monthTotal / monthDivisor)), 
-                        loadShedding: "00h 00m",
+                        loadShedding: formatTime(monthLostLight),
                         totalBlackout: formatTime(monthBlackout),
                         dailyGraph: monthGraphData
                     }

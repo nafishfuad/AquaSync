@@ -44,6 +44,7 @@ struct TankSettings {
     uint16_t activeMinutesHistory[30]; 
     uint16_t awakeMinutesToday[24]; 
     uint16_t awakeMinutesHistory[30];
+    uint16_t lightLostHistory[30];
     int totalLoadSheddingToday;     
     int lightLoadSheddingToday;     
     int lastTrackedDay;             

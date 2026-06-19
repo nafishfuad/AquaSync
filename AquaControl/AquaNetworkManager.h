@@ -116,6 +116,11 @@ private:
                 _shadow.awakeMinutesHistory[i] = s.awakeMinutesHistory[i];
                 changes++;
             }
+            if (!_shadowInit || s.lightLostHistory[i] != _shadow.lightLostHistory[i]) {
+                doc["dailyLostLightData/" + String(i)] = s.lightLostHistory[i];
+                _shadow.lightLostHistory[i] = s.lightLostHistory[i];
+                changes++;
+            }
         }
 
         if (changes == 0 && _shadowInit) return ""; 
