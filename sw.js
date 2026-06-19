@@ -41,6 +41,11 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
 
+    // Only cache HTTP/HTTPS requests (ignores chrome-extension://, etc.)
+    if (!url.protocol.startsWith('http')) {
+        return;
+    }
+
     // Bypass cache for API calls (Firebase & Local ESP32)
     if (
         url.hostname.includes('firebase') || 
