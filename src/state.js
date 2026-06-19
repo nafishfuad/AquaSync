@@ -232,6 +232,11 @@ export const DeviceStore = {
                 this.devices[hwid].firmware.current = newMetrics.fw_version;
             }
 
+            // Sync the device name across all clients if it was changed elsewhere
+            if (newMetrics.deviceName && this.devices[hwid].name !== newMetrics.deviceName) {
+                this.devices[hwid].name = newMetrics.deviceName;
+            }
+
             if (newMetrics.hourlyData || newMetrics.dailyData) {
                 const h = toArray(newMetrics.hourlyData, 24, 0);
                 const d = toArray(newMetrics.dailyData, 30, 0);
