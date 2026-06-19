@@ -2,6 +2,7 @@
 
 import { DeviceStore, IdentityStore } from '../../state.js';
 import { renderAboutModal } from './AboutModal.js';
+import { API } from '../../api.js';
 import { renderPairingWizard, renderEmptyState, setupDemoDevice } from './PairingWizard.js';
 import { showConfirm } from './CustomDialogs.js';
 
@@ -84,7 +85,12 @@ export function initTopNav() {
                         <div class="flex items-center space-x-3">
                             <span class="text-xl">🐠</span>
                             <div class="flex flex-col">
-                                <span class="text-sm font-bold text-white">${dev.name}</span>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-bold text-white">${dev.name}</span>
+                                    <button class="btn-rename-device text-gray-500 hover:text-white transition-colors" data-hwid="${dev.hwid}" data-name="${dev.name}">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                    </button>
+                                </div>
                                 <span class="text-[8px] text-gray-500 uppercase tracking-widest">${formatHwidDisplay(dev.hwid)}</span>
                             </div>
                         </div>
@@ -156,6 +162,34 @@ export function initTopNav() {
                 const targetHwid = e.target.getAttribute("data-hwid");
                 DeviceStore.setActiveDevice(targetHwid);
                 window.location.reload(); 
+            };
+        });
+
+        document.querySelectorAll(".btn-rename-device").forEach(btn => {
+            btn.onclick = async (e) => {
+                e.stopPropagation(); // prevent dropdown trigger from closing
+                const targetHwid = e.target.closest('button').getAttribute("data-hwid");
+                const currentName = e.target.closest('button').getAttribute("data-name");
+                
+                const newName = prompt("Enter a new name for your device:", currentName);
+                if (newName && newName.trim() !== "" && newName !== currentName) {
+                    const cleanName = newName.trim().substring(0, 30);
+                    
+                    // Update Local State immediately for fast UI
+                    DeviceStore.updateDeviceState(targetHwid, { deviceName: cleanName });
+                    
+                    // Update the active UI title immediately if this is the active device
+                    const activeDev = DeviceStore.getActiveDevice();
+                    if (activeDev && activeDev.hwid === targetHwid) {
+                        const titleEl = document.getElementById("ui-active-name");
+                        if (titleEl) titleEl.innerText = cleanName;
+                    }
+                    
+                    // Send to Hardware/Firebase
+                    await API.sendCommand(DeviceStore.devices[targetHwid], { deviceName: cleanName });
+                    
+                    window.location.reload(); // Reload to refresh dropdown
+                }
             };
         });
 
