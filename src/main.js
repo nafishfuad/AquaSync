@@ -12,6 +12,7 @@ import { initAuthModal } from './components/system/AuthModal.js';
 const AquaSync = {
     _sendTimeout: null,
     _syncLoopRunning: false,
+    _firmwareChecked: false,
 
     async init() {
         console.log("🌊 AquaSync Ecosystem Initializing...");
@@ -217,7 +218,8 @@ const AquaSync = {
         const device = DeviceStore.getActiveDevice();
         if (!device) { this._syncLoopRunning = false; return; }
 
-        if (device.firmware.latest === "Checking..." || device.firmware.latest === "Unknown") {
+        if (!this._firmwareChecked || device.firmware.latest === "Checking..." || device.firmware.latest === "Unknown") {
+            this._firmwareChecked = true;
             try {
                 const fullManifestReq = await fetch("https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware.json?t=" + Date.now());
                 if (fullManifestReq.ok) {
