@@ -322,6 +322,7 @@ public:
 
                                 if (targetModel == DEVICE_MODEL) {
                                     String fullDownloadUrl = "https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware/" + targetModel + "_" + version + ".bin";
+                                    httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
                                     httpUpdate.rebootOnUpdate(false); 
                                     if (httpUpdate.update(_client, fullDownloadUrl) == HTTP_UPDATE_OK) {
                                         http.begin(_client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
