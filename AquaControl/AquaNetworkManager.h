@@ -23,11 +23,12 @@ private:
 
     // 🔥 OPTIMIZATION A: Initialize to a negative offset so the command fetch fires INSTANTLY on boot!
     unsigned long _lastFirebasePull = -15000; 
-    unsigned long _lastHeartbeat = 0;
+    unsigned long _lastHeartbeat = -60000;
     unsigned long _lastAnalyticsPush = 0;
     unsigned long _lastCommandReceivedTime = 0;
     
     bool _hasFetchedInitialConfig = false;
+    bool _initialHeartbeatPushed = false;
     int _lastPushedDayOfYear = -1;
 
     String getLogTime() {
@@ -339,7 +340,7 @@ public:
                             bool deleteSuccess = false;
                             if (shouldDeleteCommand) {
                                 http.begin(_client, cmdUrl);
-                                int delCode = http.sendRequest("DELETE");
+                                int delCode = http.PUT("null");
                                 if (delCode >= 200 && delCode < 300) {
                                     deleteSuccess = true;
                                 }
@@ -364,8 +365,6 @@ public:
                                     ESP.restart();
                                 }
                             }
-
-                            return;
                         }
 
                         if (_settingsMgr.updateFromJson(cmdDoc.as<JsonObject>())) {
@@ -387,8 +386,9 @@ public:
             WiFi.setTxPower(WIFI_POWER_8_5dBm); // 🔥 DROP POWER to stay cool
         }
 
-        if (now - _lastHeartbeat > 60000) {
+        if (!_initialHeartbeatPushed || now - _lastHeartbeat > 60000) {
             _lastHeartbeat = now;
+            _initialHeartbeatPushed = true;
             WiFi.setTxPower(WIFI_POWER_19_5dBm); // 🔥 BOOST POWER for Firebase
             http.begin(_client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
             http.addHeader("Content-Type", "application/json");
