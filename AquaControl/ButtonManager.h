@@ -59,7 +59,6 @@ public:
         if (currentState && !_lastState) {
             _pressTime = now;
             _handledHold = false; 
-            if (_isMaintenanceMode) _maintenanceStartTime = now; 
         }
 
         unsigned long holdDuration = now - _pressTime;
@@ -124,7 +123,7 @@ public:
                 }
             } 
             else if (!_isMaintenanceMode && !_handledHold) {
-                _clickCount++;
+                if (_clickCount < 3) _clickCount++;
             }
         }
 

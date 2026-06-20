@@ -97,7 +97,13 @@ export function renderColorSpectrum(previewSlot, presetsSlot, manualSlot, custom
         });
 
         slider.addEventListener("change", (e) => {
-            onUpdateHook({ ...currentSpectrum, [key]: parseInt(e.target.value) }, false);
+            const liveSpectrum = {
+                w: parseInt(manualSlot.querySelector('#slide-w').value),
+                r: parseInt(manualSlot.querySelector('#slide-r').value),
+                g: parseInt(manualSlot.querySelector('#slide-g').value),
+                b: parseInt(manualSlot.querySelector('#slide-b').value),
+            };
+            onUpdateHook(liveSpectrum, false);
         });
     });
 

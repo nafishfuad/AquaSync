@@ -7,6 +7,7 @@ import { renderPairingWizard, renderEmptyState, setupDemoDevice } from './Pairin
 import { showConfirm, showPrompt } from './CustomDialogs.js';
 
 export function initTopNav() {
+    const escHtml = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const slot = document.getElementById("slot-top-nav");
     if (!slot) return;
 
@@ -86,8 +87,8 @@ export function initTopNav() {
                             <span class="text-xl">🐠</span>
                             <div class="flex flex-col">
                                 <div class="flex items-center gap-2">
-                                    <span class="text-sm font-bold text-white">${dev.name}</span>
-                                    <button class="btn-rename-device text-gray-500 hover:text-white transition-colors" data-hwid="${dev.hwid}" data-name="${dev.name}">
+                                    <span class="text-sm font-bold text-white">${escHtml(dev.name)}</span>
+                                    <button class="btn-rename-device text-gray-500 hover:text-white transition-colors" data-hwid="${dev.hwid}" data-name="${escHtml(dev.name)}">
                                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                                     </button>
                                 </div>
@@ -196,7 +197,7 @@ export function initTopNav() {
         document.querySelectorAll(".btn-remove-device").forEach(btn => {
             btn.onclick = async (e) => {
                 if (await showConfirm("Remove Device", "Are you sure you want to remove this device from the app?")) {
-                    const targetHwid = e.target.getAttribute("data-hwid");
+                    const targetHwid = e.target.closest('[data-hwid]')?.getAttribute('data-hwid') || e.currentTarget?.getAttribute('data-hwid');
                     
                     // Remove cloud ownership so the device is no longer tied to this account
                     if (IdentityStore.currentUser) {

@@ -6,7 +6,7 @@ import { API } from '../../api.js';
 let heartbeatInterval = null;
 
 export function setupDemoDevice() {
-    const demoId = "DEMO-" + Math.floor(Math.random() * 10000);
+    const demoId = 'DEMO-DEVICE';
     DeviceStore.addDevice(demoId, "AS-Standard", "Virtual Demo Tank");
     
     const dev = DeviceStore.devices[demoId];

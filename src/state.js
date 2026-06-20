@@ -252,7 +252,7 @@ export const DeviceStore = {
                 if (newMetrics.liveActiveMins > todayTotal) {
                     let sumOfFirebaseHours = 0;
                     for(let i=0; i<24; i++) if (i !== currentHour) sumOfFirebaseHours += h[i] || 0;
-                    const unpushedMinutes = newMetrics.liveActiveMins - sumOfFirebaseHours;
+                    const unpushedMinutes = Math.max(0, newMetrics.liveActiveMins - sumOfFirebaseHours);
                     h[currentHour] += unpushedMinutes;
                     if (h[currentHour] > 60) h[currentHour] = 60; 
                     todayTotal = newMetrics.liveActiveMins;
@@ -297,12 +297,12 @@ export const DeviceStore = {
                 const totalOutageMins = newMetrics.totalLoadSheddingToday || 0;
                 
                 // Add today's total outage to the week and month if it's not already in dailyAwake[0]
-                weekBlackout += totalOutageMins;
-                monthBlackout += totalOutageMins;
+                if (!dailyAwake[0] || dailyAwake[0] === 0) weekBlackout += totalOutageMins;
+                if (!dailyAwake[0] || dailyAwake[0] === 0) monthBlackout += totalOutageMins;
                 
                 // Add today's lost light to the week and month if it's not already in dailyLostLight[0]
-                weekLostLight += lightOutageMins;
-                monthLostLight += lightOutageMins;
+                if (!dailyAwake[0] || dailyAwake[0] === 0) weekLostLight += lightOutageMins;
+                if (!dailyAwake[0] || dailyAwake[0] === 0) monthLostLight += lightOutageMins;
 
                 this.devices[hwid].analyticsData = {
                     today: { 
@@ -347,7 +347,6 @@ export const DeviceStore = {
     save() {
         try {
             const clone = JSON.parse(JSON.stringify(this.devices));
-            for (let id in clone) clone[id].historicalData = [];
             localStorage.setItem("aquasync_ecosystem", JSON.stringify(clone));
             
             if (this.activeDeviceId) {

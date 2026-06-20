@@ -58,10 +58,13 @@ private:
     }
 
     int parseTime(const char* timeStr) {
+        if (!timeStr || strlen(timeStr) == 0) return 0;
         String t = String(timeStr);
         int sep = t.indexOf(':');
         if (sep == -1) return 0;
-        return (t.substring(0, sep).toInt() * 60) + t.substring(sep + 1).toInt();
+        int h = constrain(t.substring(0, sep).toInt(), 0, 23);
+        int m = constrain(t.substring(sep + 1).toInt(), 0, 59);
+        return (h * 60) + m;
     }
 
     void evaluateAutoSchedule(TankSettings& settings) {
@@ -241,20 +244,32 @@ public:
             if (lastBreadcrumb > 0 && nowTime > lastBreadcrumb && (nowTime - lastBreadcrumb) >= 60) {
                 int outageMins = max(1, (int)(nowTime - lastBreadcrumb) / 60);
                 settings.totalLoadSheddingToday += outageMins;
-                int curr = timeinfo->tm_hour * 60 + timeinfo->tm_min;
-                int start = parseTime(settings.startTime);
-                int end = start + (settings.photoperiod * 60);
-                if (curr >= start && (curr - outageMins) < end) {
-                    settings.lightLoadSheddingToday += min(outageMins, (end - (curr - outageMins)));
-                    _isRecovering = true;
-                    _recoveryStartMins = curr;
-                    _recoveryEndMins = curr + settings.recoveryMins;
-                }
                 
                 time_t localLast = lastBreadcrumb;
-                struct tm* lastInfo = localtime(&localLast);
+                struct tm lastInfoStruct;
+                struct tm* lastInfo = localtime_r(&localLast, &lastInfoStruct);
+                
+                struct tm nowInfoStruct;
+                struct tm* nowInfo = localtime_r(&nowTime, &nowInfoStruct);
+                
+                int outageStartMins = lastInfo->tm_hour * 60 + lastInfo->tm_min;
+                int outageEndMins = nowInfo->tm_hour * 60 + nowInfo->tm_min;
+                if (outageEndMins < outageStartMins) outageEndMins += 24 * 60; // Rollover
+
+                int lightStartMins = parseTime(settings.startTime);
+                int lightEndMins = lightStartMins + (settings.photoperiod * 60);
+                
+                int overlapStart = max(outageStartMins, lightStartMins);
+                int overlapEnd = min(outageEndMins, lightEndMins);
+                if (overlapEnd > overlapStart) {
+                    settings.lightLoadSheddingToday += (overlapEnd - overlapStart);
+                    _isRecovering = true;
+                    _recoveryStartMins = nowInfo->tm_hour * 60 + nowInfo->tm_min; // Current time
+                    _recoveryEndMins = _recoveryStartMins + settings.recoveryMins;
+                }
+                
                 char evtBuf[16];
-                snprintf(evtBuf, sizeof(evtBuf), "%02d:%02d-%02d:%02d,", lastInfo->tm_hour, lastInfo->tm_min, timeinfo->tm_hour, timeinfo->tm_min);
+                snprintf(evtBuf, sizeof(evtBuf), "%02d:%02d-%02d:%02d,", lastInfo->tm_hour, lastInfo->tm_min, nowInfo->tm_hour, nowInfo->tm_min);
                 if (strlen(settings.outageEventsToday) + strlen(evtBuf) < sizeof(settings.outageEventsToday)) {
                     strcat(settings.outageEventsToday, evtBuf);
                 }
@@ -298,7 +313,7 @@ public:
                 
                 // 🔥 THE FIX: Calculate missed days (Handles power outages over 24+ hours securely)
                 int daysMissed = currentDayOfYear - settings.lastTrackedDay;
-                if (daysMissed < 0) daysMissed += 365; // Handle New Year rollover
+                if (daysMissed < 0) daysMissed += (settings.lastTrackedDay == 365) ? 366 : 365; // Handle New Year rollover
                 if (daysMissed > 30) daysMissed = 30;  // Cap at array size
                 
                 // Shift History Arrays mathematically based on missed days

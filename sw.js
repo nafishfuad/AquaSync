@@ -11,9 +11,25 @@ const PRECACHE_URLS = [
     './src/components/analytics/Charts.js',
     './src/components/analytics/Overview.js',
     './src/components/hardware/ColorMixer.js',
+    './src/components/hardware/Dimmer.js',
+    './src/components/hardware/ManualDimmer.js',
+    './src/components/hardware/ModeBanner.js',
+    './src/components/hardware/OverrideGrid.js',
     './src/components/hardware/PrimaryControlCard.js',
+    './src/components/hardware/Relay.js',
     './src/components/hardware/ScheduleCard.js',
-    './src/components/system/Companion.js'
+    './src/components/system/AboutModal.js',
+    './src/components/system/Account.js',
+    './src/components/system/AuthModal.js',
+    './src/components/system/Companion.js',
+    './src/components/system/Connection.js',
+    './src/components/system/CustomDialogs.js',
+    './src/components/system/Firmware.js',
+    './src/components/system/Maintenance.js',
+    './src/components/system/OutageModal.js',
+    './src/components/system/PairingWizard.js',
+    './src/components/system/SystemModals.js',
+    './src/components/system/TopNav.js'
 ];
 
 self.addEventListener('install', event => {

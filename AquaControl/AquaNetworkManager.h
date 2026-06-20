@@ -215,7 +215,7 @@ private:
     void handleHandshake() {
         addCorsHeaders();
         JsonDocument doc;
-        doc["hw_id"] = _hwid; doc["session_token"] = "AQUA_SECURE_123"; 
+        doc["hw_id"] = _hwid;
         String out; serializeJson(doc, out);
         _server.send(200, "application/json", out);
     }
@@ -226,10 +226,17 @@ private:
         if (!_server.hasArg("plain")) return;
         JsonDocument doc; if (deserializeJson(doc, _server.arg("plain"))) return;
 
+        String ssid = doc["ssid"].as<String>();
+        String pass = doc["pass"].as<String>();
+        if (ssid.length() == 0 || ssid.length() > 32 || pass.length() > 64) {
+            _server.send(400, "application/json", "{\"error\":\"Invalid credentials\"}");
+            return;
+        }
+
         Preferences prefs;
         prefs.begin("aqua-ctrl", false);
-        prefs.putString("ssid", doc["ssid"].as<String>());
-        prefs.putString("pass", doc["pass"].as<String>());
+        prefs.putString("ssid", ssid);
+        prefs.putString("pass", pass);
         if (doc.containsKey("deviceName")) prefs.putString("devName", doc["deviceName"].as<String>());
         prefs.end();
 
@@ -304,14 +311,17 @@ public:
                             http.end();
                         }
 
+                        bool shouldDeleteCommand = true;
+
                         if (cmdDoc.containsKey("command")) {
                             String cmd = cmdDoc["command"].as<String>();
-                            bool shouldDeleteCommand = true;
 
                             if (cmd == "download_ota") {
                                 String targetModel = cmdDoc["device_model"].as<String>();
-                                String version = cmdDoc["version"].as<String>(); 
-                                
+                                String version = cmdDoc["version"].as<String>();
+
+                                if (targetModel.isEmpty() || version.isEmpty()) { shouldDeleteCommand = false; return; }
+
                                 if (targetModel == DEVICE_MODEL) {
                                     String fullDownloadUrl = "https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware/" + targetModel + "_" + version + ".bin";
                                     httpUpdate.rebootOnUpdate(false); 
@@ -356,12 +366,13 @@ public:
                             _settingsMgr.triggerLazySave(); // 🔥 FORCE HARDWARE TO APPLY INSTANTLY
                         }
                     }
-                    
-                    // Unconditionally delete the command from Firebase to prevent getting stuck
-                    http.begin(_client, cmdUrl);
-                    int delCode = http.sendRequest("DELETE");
-                    if (delCode > 0) http.getString();
-                    http.end();
+
+                    if (shouldDeleteCommand) {
+                        http.begin(_client, cmdUrl);
+                        int delCode = http.sendRequest("DELETE");
+                        if (delCode > 0) http.getString();
+                        http.end();
+                    }
                 }
             } else {
                 http.end();
@@ -374,7 +385,8 @@ public:
             WiFi.setTxPower(WIFI_POWER_19_5dBm); // 🔥 BOOST POWER for Firebase
             http.begin(_client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
             http.addHeader("Content-Type", "application/json");
-            http.PATCH(generateHeartbeatJson());
+            int hbCode = http.PATCH(generateHeartbeatJson());
+            if (hbCode > 0) http.getString();
             http.end();
             WiFi.setTxPower(WIFI_POWER_8_5dBm); // 🔥 DROP POWER to stay cool
         }

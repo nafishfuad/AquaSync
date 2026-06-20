@@ -138,14 +138,16 @@ export function renderCharts(container, analyticsData) {
       let isActuallyOn = false;
       let isBlackout = false;
 
-      if (!isFuture && isSched) {
-          isActuallyOn = true;
+      if (!isFuture) {
           for (const o of outages) {
               if (o.start <= o.end) {
-                  if (normalizedT >= o.start && normalizedT < o.end) { isBlackout = true; isActuallyOn = false; break; }
+                  if (normalizedT >= o.start && normalizedT < o.end) { isBlackout = true; break; }
               } else {
-                  if (normalizedT >= o.start || normalizedT < o.end) { isBlackout = true; isActuallyOn = false; break; }
+                  if (normalizedT >= o.start || normalizedT < o.end) { isBlackout = true; break; }
               }
+          }
+          if (isSched && !isBlackout) {
+              isActuallyOn = true;
           }
       }
 
@@ -153,10 +155,12 @@ export function renderCharts(container, analyticsData) {
       chartData.push(y);
 
       let sliceColor = isLightMode ? "#e2e8f0" : "#1f2937";
-      if (y === 1) {
-        if (isFuture) sliceColor = isLightMode ? "#cbd5e1" : "#374151";
-        else if (isBlackout) sliceColor = "#ef4444"; 
-        else if (isActuallyOn) sliceColor = "#00f2fe"; 
+      if (isFuture) {
+        sliceColor = isLightMode ? "#cbd5e1" : "#374151";
+      } else if (isBlackout) {
+        sliceColor = "#ef4444"; 
+      } else if (y === 1 && isActuallyOn) {
+        sliceColor = "#00f2fe"; 
       }
       segmentColors.push(sliceColor);
     }
@@ -194,7 +198,7 @@ export function renderCharts(container, analyticsData) {
                 if (ctx.p0.parsed.y !== ctx.p1.parsed.y)
                   return isLightMode ? "#e2e8f0" : "#1f2937"; // Vertical steps are ALWAYS Gray
                 if (ctx.p0.parsed.y === 0 && ctx.p1.parsed.y === 0)
-                  return isLightMode ? "#e2e8f0" : "#1f2937"; // Bottom line is ALWAYS Gray
+                  return segmentColors[ctx.p0DataIndex] === "#ef4444" ? "#ef4444" : (isLightMode ? "#e2e8f0" : "#1f2937"); // Bottom line shows Red for outage, otherwise Gray
                 return segmentColors[ctx.p0DataIndex] || "#00f2fe"; // Top line gets its precise segment color
               },
             },

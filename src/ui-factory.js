@@ -29,6 +29,14 @@ export function buildInsightsPanel(device) {
     if (!overviewSlot || !chartsSlot) return;
 
     overviewSlot.innerHTML = "";
+    // Destroy existing Chart instances to prevent memory leak
+    if (typeof Chart !== 'undefined') {
+        const existingCanvases = chartsSlot.querySelectorAll('canvas');
+        existingCanvases.forEach(canvas => {
+            const chartInstance = Chart.getChart(canvas);
+            if (chartInstance) chartInstance.destroy();
+        });
+    }
     chartsSlot.innerHTML = "";
 
     renderOverview(overviewSlot, device);

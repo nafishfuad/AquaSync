@@ -26,6 +26,7 @@ export function renderOverview(container, device) {
     };
 
     const styleTimeStr = (str, colorClass = "text-white") => {
+        if (!str) return '<span>--</span>';
         const hmMatch = str.match(/(\d{2})h (\d{2})m/);
         if (hmMatch) return `<div class="whitespace-nowrap"><span class="text-xl font-bold ${colorClass} tracking-tight">${hmMatch[1]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">h</span><span class="text-xl font-bold ${colorClass} tracking-tight">${hmMatch[2]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">m</span></div>`;
         
@@ -91,10 +92,59 @@ export function renderOverview(container, device) {
     const isOffline = m.lastHeartbeatTs && (nowSecs - m.lastHeartbeatTs) > 120;
     
     let lastOutageStr = null;
+    let lastOutageDurationStr = "00h 00m";
+    let lastOutageLostLightStr = "00h 00m";
+    let lastOutage12h = "";
+
     if (m.outagesToday) {
         const parts = m.outagesToday.split(',').filter(x => x);
         if (parts.length > 0) {
             lastOutageStr = parts[parts.length - 1]; // e.g. "17:00-17:30"
+            if (lastOutageStr.includes('-')) {
+                const [start, end] = lastOutageStr.split('-');
+                const [sH, sM] = start.split(':').map(Number);
+                const [eH, eM] = end.split(':').map(Number);
+                
+                let startMins = sH * 60 + sM;
+                let endMins = eH * 60 + eM;
+                if (endMins < startMins) endMins += 24 * 60; 
+                
+                const diff = endMins - startMins;
+                const h = Math.floor(diff / 60).toString().padStart(2, '0');
+                const mStr = (diff % 60).toString().padStart(2, '0');
+                lastOutageDurationStr = `${h}h ${mStr}m`;
+                
+                // Calculate Lost Light overlap
+                let lostLightDiff = 0;
+                if (m.startTime && m.photoperiod) {
+                    const [shH, shM] = m.startTime.split(':').map(Number);
+                    const schedStartMins = shH * 60 + shM;
+                    const schedEndMins = schedStartMins + (m.photoperiod * 60);
+                    
+                    const overlapStart = Math.max(startMins, schedStartMins);
+                    const overlapEnd = Math.min(endMins, schedEndMins);
+                    if (overlapEnd > overlapStart) lostLightDiff += (overlapEnd - overlapStart);
+                    
+                    // Rollover logic
+                    if (schedEndMins > 1440 && startMins < (schedEndMins - 1440)) {
+                         const overlapStart2 = Math.max(startMins, 0);
+                         const overlapEnd2 = Math.min(endMins, schedEndMins - 1440);
+                         if (overlapEnd2 > overlapStart2) lostLightDiff += (overlapEnd2 - overlapStart2);
+                    }
+                }
+                const llH = Math.floor(lostLightDiff / 60).toString().padStart(2, '0');
+                const llM = (lostLightDiff % 60).toString().padStart(2, '0');
+                lastOutageLostLightStr = `${llH}h ${llM}m`;
+                
+                const to12h = (hour, min) => {
+                    const ampm = hour >= 12 ? 'PM' : 'AM';
+                    const h12 = hour % 12 || 12;
+                    return `${h12.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')} ${ampm}`;
+                };
+                lastOutage12h = `${to12h(sH, sM)} - ${to12h(eH, eM)}`;
+            } else {
+                lastOutage12h = lastOutageStr;
+            }
         }
     }
 
@@ -156,7 +206,7 @@ export function renderOverview(container, device) {
                         Last Outage Recovered
                     </p>
                     <div class="text-[12px] text-gray-300 font-medium flex items-center">
-                        Time: <span class="ml-1 font-bold text-white">${lastOutageStr}</span>
+                        Time: <span class="ml-1 font-bold text-white">${lastOutage12h}</span>
                     </div>
                 </div>
                 <button id="btn-dismiss-outage" class="px-4 flex items-center justify-center border-l border-gray-700 hover:bg-gray-700 text-gray-500 hover:text-white transition-colors active:scale-95" aria-label="Dismiss">
@@ -179,7 +229,7 @@ export function renderOverview(container, device) {
 
         const clickArea = clone.querySelector("#blackout-click-area");
         clickArea.addEventListener("click", () => {
-            window.showOutageModal("Power Outage", "Today's Report", totalBlackoutText, loadSheddingText);
+            window.showOutageModal("Power Outage", "Last Outage", lastOutageDurationStr, lastOutageLostLightStr);
         });
     }
 

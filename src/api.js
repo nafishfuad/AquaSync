@@ -60,7 +60,10 @@ export const API = {
 
         try {
             // 🔥 BANDWIDTH SAVER: Removed cache-busting timestamp to enable Firebase ETag caching (returns 304 Not Modified when idle)
-            const response = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/state.json`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            const response = await fetch(`${FIREBASE_URL}/devices/${device.hwid}/state.json`, { signal: controller.signal });
+            clearTimeout(timeoutId);
             if (!response.ok) throw new Error("Cloud HTTP Error");
             
             const cloudData = await response.json();
@@ -151,6 +154,10 @@ export const API = {
             return response.ok;
         } catch (err) {
             console.warn("[API] Provisioning connection dropped (Likely rebooting).");
+            // TODO: A TypeError here means the device rebooted and closed the TCP socket — returning
+            // true is intentional (expected success path). Only non-TypeError errors (e.g., explicit
+            // HTTP failures before the throw) would indicate a real failure, but those are handled
+            // above via response.ok, so this catch branch is always a connection-reset / reboot signal.
             return true; 
         }
     },

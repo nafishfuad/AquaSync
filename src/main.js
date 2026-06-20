@@ -11,6 +11,7 @@ import { initAuthModal } from './components/system/AuthModal.js';
 
 const AquaSync = {
     _sendTimeout: null,
+    _syncLoopRunning: false,
 
     async init() {
         console.log("🌊 AquaSync Ecosystem Initializing...");
@@ -119,7 +120,7 @@ const AquaSync = {
 
         document.addEventListener("visibilitychange", () => {
             if (document.visibilityState === 'visible') {
-                this.runSyncLoop();
+                if (!this._syncLoopRunning) this.runSyncLoop();
             }
         });
     },
@@ -211,8 +212,10 @@ const AquaSync = {
     },
 
     async runSyncLoop() {
+        if (this._syncLoopRunning) return;
+        this._syncLoopRunning = true;
         const device = DeviceStore.getActiveDevice();
-        if (!device) return;
+        if (!device) { this._syncLoopRunning = false; return; }
 
         if (device.firmware.latest === "Checking..." || device.firmware.latest === "Unknown") {
             try {
@@ -266,6 +269,7 @@ const AquaSync = {
         }
 
         // Loop every 10 seconds
+        this._syncLoopRunning = false;
         setTimeout(() => this.runSyncLoop(), 10000);
     },
 
@@ -278,7 +282,7 @@ const AquaSync = {
             const currentDevice = DeviceStore.getActiveDevice();
             if (!currentDevice) return;
 
-            if ((payload.hasOwnProperty("isLightOn") || payload.hasOwnProperty("currentBrightness")) && !currentDevice.metrics.isCO2ScheduleSeparate) {
+            if (!currentDevice.metrics.isAutoMode && (payload.hasOwnProperty("isLightOn") || payload.hasOwnProperty("currentBrightness")) && !currentDevice.metrics.isCO2ScheduleSeparate) {
                 payload.isCO2On = payload.hasOwnProperty("isLightOn") ? payload.isLightOn : (payload.currentBrightness > 0);
             }
 

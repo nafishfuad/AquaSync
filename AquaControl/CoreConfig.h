@@ -48,7 +48,7 @@ struct TankSettings {
     int totalLoadSheddingToday;     
     int lightLoadSheddingToday;     
     int lastTrackedDay;             
-    char outageEventsToday[128];    // Stores "HH:MM-HH:MM,..." for UI timeline rendering
+    char outageEventsToday[256];    // Stores "HH:MM-HH:MM,..." for UI timeline rendering
 };
 
 #endif
