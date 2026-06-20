@@ -5,6 +5,8 @@
 #include "CoreConfig.h"
 #include "SettingsManager.h"
 #include "HardwareEngine.h"
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 
 class ButtonManager {
 private:
@@ -107,6 +109,20 @@ public:
                     unsigned long flashStart = millis();
                     while(millis() - flashStart < 3000) _hw.handleLEDs(); 
                     
+                    // 🔥 Wipe Firebase Data BEFORE losing Wi-Fi
+                    if (WiFi.status() == WL_CONNECTED) {
+                        HTTPClient http;
+                        WiFiClientSecure client;
+                        client.setInsecure();
+                        String mac = WiFi.macAddress();
+                        mac.replace(":", "");
+                        String hwidUrl = "https://aqua-fish-controller-default-rtdb.asia-southeast1.firebasedatabase.app/devices/AQUA-" + mac;
+                        
+                        http.begin(client, hwidUrl + "/state.json"); http.sendRequest("DELETE"); http.end();
+                        http.begin(client, hwidUrl + "/commands.json"); http.sendRequest("DELETE"); http.end();
+                        http.begin(client, hwidUrl + "/ownerUid.json"); http.sendRequest("DELETE"); http.end();
+                    }
+
                     Preferences p; 
                     p.begin("aqua-ctrl", false); p.clear(); p.end();
                     p.begin("aqua-tracker", false); p.clear(); p.end();

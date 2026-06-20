@@ -352,6 +352,16 @@ public:
                             // Or if we didn't try to delete them because it wasn't required
                             if (deleteSuccess || !shouldDeleteCommand) {
                                 if (cmd == "factory_reset" || cmd == "forget_wifi") {
+                                    // 🔥 THE FIX: Wipe all Firebase data so the device is cleanly orphaned
+                                    http.begin(_client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
+                                    http.sendRequest("DELETE"); http.end();
+                                    
+                                    http.begin(_client, FIREBASE_URL + "/devices/" + _hwid + "/commands.json");
+                                    http.sendRequest("DELETE"); http.end();
+                                    
+                                    http.begin(_client, FIREBASE_URL + "/devices/" + _hwid + "/ownerUid.json");
+                                    http.sendRequest("DELETE"); http.end();
+
                                     Preferences p;
                                     p.begin("aqua-ctrl", false); p.clear(); p.end();
                                     p.begin("aqua-tracker", false); p.clear(); p.end();

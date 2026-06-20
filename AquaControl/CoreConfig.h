@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-const String FW_VERSION = "v1.5.4";
+const String FW_VERSION = "v1.5.5";
 const int CURRENT_SCHEMA_VERSION = 2;
 const String DEVICE_MODEL = "AS-Standard";
 const String FIREBASE_URL = "https://aqua-fish-controller-default-rtdb.asia-southeast1.firebasedatabase.app";
