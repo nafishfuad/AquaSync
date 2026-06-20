@@ -301,6 +301,7 @@ public:
                 if (cmdPayload != "null" && cmdPayload != "") {
                     JsonDocument cmdDoc;
                     DeserializationError error = deserializeJson(cmdDoc, cmdPayload);
+                    bool shouldDeleteCommand = true;
                     
                     if (!error) {
                         if (cmdDoc.containsKey("ota_staged") && cmdDoc["ota_staged"].as<bool>() == false) {
@@ -310,9 +311,6 @@ public:
                             if (pCode > 0) http.getString();
                             http.end();
                         }
-
-                        bool shouldDeleteCommand = true;
-
                         if (cmdDoc.containsKey("command")) {
                             String cmd = cmdDoc["command"].as<String>();
 
