@@ -89,15 +89,13 @@ void setup() {
         } else {
             Serial.println("[WIFI] ❌ Connection failed. Starting Hotspot Setup Mode.");
             WiFi.mode(WIFI_AP);
-            String apPass = hwid.length() >= 8 ? hwid.substring(hwid.length() - 8) : "AquaSync";
-            WiFi.softAP("AquaControl_setup", apPass);
+            WiFi.softAP("AquaSync_setup", "");
             Serial.println("[WIFI] 🌐 Hotspot IP: 192.168.4.1");
         }
     } else {
         Serial.println("[WIFI] 📡 No credentials found. Starting Hotspot Setup Mode.");
         WiFi.mode(WIFI_AP);
-        String apPass = hwid.length() >= 8 ? hwid.substring(hwid.length() - 8) : "AquaSync";
-        WiFi.softAP("AquaControl_setup", apPass);
+        WiFi.softAP("AquaSync_setup", "");
         Serial.println("[WIFI] 🌐 Hotspot IP: 192.168.4.1");
     }
 
