@@ -336,25 +336,33 @@ public:
                                 }
                             }
 
+                            bool deleteSuccess = false;
                             if (shouldDeleteCommand) {
                                 http.begin(_client, cmdUrl);
                                 int delCode = http.sendRequest("DELETE");
+                                if (delCode >= 200 && delCode < 300) {
+                                    deleteSuccess = true;
+                                }
                                 if (delCode > 0) http.getString();
                                 http.end();
                             }
 
-                            if (cmd == "factory_reset" || cmd == "forget_wifi") {
-                                Preferences p;
-                                p.begin("aqua-ctrl", false); p.clear(); p.end();
-                                p.begin("aqua-tracker", false); p.clear(); p.end();
-                                WiFi.disconnect(true, true);
-                                delay(500);
-                                ESP.restart();
-                            }
-                            
-                            if (cmd == "reboot") {
-                                delay(1000);
-                                ESP.restart();
+                            // Only execute fatal commands if we successfully deleted them from Firebase
+                            // Or if we didn't try to delete them because it wasn't required
+                            if (deleteSuccess || !shouldDeleteCommand) {
+                                if (cmd == "factory_reset" || cmd == "forget_wifi") {
+                                    Preferences p;
+                                    p.begin("aqua-ctrl", false); p.clear(); p.end();
+                                    p.begin("aqua-tracker", false); p.clear(); p.end();
+                                    WiFi.disconnect(true, true);
+                                    delay(500);
+                                    ESP.restart();
+                                }
+                                
+                                if (cmd == "reboot") {
+                                    delay(1000);
+                                    ESP.restart();
+                                }
                             }
 
                             return;
