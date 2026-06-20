@@ -386,16 +386,19 @@ public:
             WiFi.setTxPower(WIFI_POWER_8_5dBm); // 🔥 DROP POWER to stay cool
         }
 
-        if (!_initialHeartbeatPushed || now - _lastHeartbeat > 60000) {
-            _lastHeartbeat = now;
-            _initialHeartbeatPushed = true;
-            WiFi.setTxPower(WIFI_POWER_19_5dBm); // 🔥 BOOST POWER for Firebase
-            http.begin(_client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
-            http.addHeader("Content-Type", "application/json");
-            int hbCode = http.PATCH(generateHeartbeatJson());
-            if (hbCode > 0) http.getString();
-            http.end();
-            WiFi.setTxPower(WIFI_POWER_8_5dBm); // 🔥 DROP POWER to stay cool
+        // Only push heartbeat if NTP has synced (time > 1 billion roughly year 2001)
+        if (time(nullptr) > 1000000000) {
+            if (!_initialHeartbeatPushed || now - _lastHeartbeat > 60000) {
+                _lastHeartbeat = now;
+                _initialHeartbeatPushed = true;
+                WiFi.setTxPower(WIFI_POWER_19_5dBm); // 🔥 BOOST POWER for Firebase
+                http.begin(_client, FIREBASE_URL + "/devices/" + _hwid + "/state.json");
+                http.addHeader("Content-Type", "application/json");
+                int hbCode = http.PATCH(generateHeartbeatJson());
+                if (hbCode > 0) http.getString();
+                http.end();
+                WiFi.setTxPower(WIFI_POWER_8_5dBm); // 🔥 DROP POWER to stay cool
+            }
         }
 
         bool isDebouncedPush = (_settingsMgr.needsFirebaseSync() && (now - _lastCommandReceivedTime > 5000)); 
