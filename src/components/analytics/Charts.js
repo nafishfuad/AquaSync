@@ -119,15 +119,21 @@ export function renderCharts(container, analyticsData) {
       relativeNowMins += 1440;
     }
 
+    let activeMinsLeft = {};
+    if (analyticsData && analyticsData.today && analyticsData.today.hourlyGraph) {
+        for (let i = 0; i < 24; i++) {
+            activeMinsLeft[i] = analyticsData.today.hourlyGraph[i] || 0;
+        }
+    }
+
     for (let t = graphStartMins; t <= graphEndMins; t += 1) {
       let normalizedT = (t + 1440) % 1440;
       let h = Math.floor(normalizedT / 60);
       let min = Math.floor(normalizedT % 60);
 
       if (min === 0) {
-        let ampm = h >= 12 ? "PM" : "AM";
         let dispH = h % 12 || 12;
-        labels.push(`${dispH}${ampm}`);
+        labels.push(`${dispH}`);
       } else {
         labels.push("");
       }
@@ -147,7 +153,16 @@ export function renderCharts(container, analyticsData) {
               }
           }
           if (isSched && !isBlackout) {
-              isActuallyOn = true;
+              if (analyticsData && analyticsData.today && analyticsData.today.hourlyGraph) {
+                  if (activeMinsLeft[h] > 0) {
+                      isActuallyOn = true;
+                      activeMinsLeft[h]--;
+                  } else if (h === now.getHours() && m && m.isLightOn) {
+                      isActuallyOn = true;
+                  }
+              } else {
+                  isActuallyOn = true;
+              }
           }
       }
 
@@ -231,8 +246,8 @@ export function renderCharts(container, analyticsData) {
             grid: { display: false },
             ticks: {
               autoSkip: false,
-              maxRotation: 45,
-              minRotation: 45,
+              maxRotation: 0,
+              minRotation: 0,
               callback: function (val, index) {
                 return labels[index];
               },

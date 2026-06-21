@@ -87,10 +87,8 @@ void setup() {
             Serial.println("[SYS] 🕒 Syncing NTP Time (UTC+6)...");
             configTime(6 * 3600, 0, "pool.ntp.org"); 
         } else {
-            Serial.println("[WIFI] ❌ Connection failed. Starting Hotspot Setup Mode.");
-            WiFi.mode(WIFI_AP);
-            WiFi.softAP("AquaSync_setup", "");
-            Serial.println("[WIFI] 🌐 Hotspot IP: 192.168.4.1");
+            Serial.println("[WIFI] ⚠️ Router offline or unreachable. ESP32 will auto-reconnect in the background when it returns.");
+            // Do NOT start Hotspot mode. Leave in WIFI_STA so it keeps trying to connect.
         }
     } else {
         Serial.println("[WIFI] 📡 No credentials found. Starting Hotspot Setup Mode.");

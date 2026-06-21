@@ -11,6 +11,7 @@ import { initAuthModal } from './components/system/AuthModal.js';
 
 const AquaSync = {
     _sendTimeout: null,
+    _syncTimer: null,
     _syncLoopRunning: false,
     _firmwareChecked: false,
 
@@ -215,6 +216,7 @@ const AquaSync = {
     async runSyncLoop() {
         if (this._syncLoopRunning) return;
         this._syncLoopRunning = true;
+        if (this._syncTimer) clearTimeout(this._syncTimer);
         const device = DeviceStore.getActiveDevice();
         if (!device) { this._syncLoopRunning = false; return; }
 
@@ -272,7 +274,7 @@ const AquaSync = {
 
         // Loop every 10 seconds
         this._syncLoopRunning = false;
-        setTimeout(() => this.runSyncLoop(), 10000);
+        this._syncTimer = setTimeout(() => this.runSyncLoop(), 10000);
     },
 
     renderActiveUI() {

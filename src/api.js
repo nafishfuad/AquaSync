@@ -154,7 +154,10 @@ export const API = {
             return response.ok;
         } catch (err) {
             console.warn("[API] Provisioning connection dropped (Likely rebooting).");
-            // TODO: A TypeError here means the device rebooted and closed the TCP socket — returning
+            // If it's a timeout error from fetchWithTimeout, it means the ESP32 hung up or crashed.
+            if (err.name === 'AbortError') return false; 
+            
+            // A TypeError here means the device rebooted and closed the TCP socket — returning
             // true is intentional (expected success path). Only non-TypeError errors (e.g., explicit
             // HTTP failures before the throw) would indicate a real failure, but those are handled
             // above via response.ok, so this catch branch is always a connection-reset / reboot signal.

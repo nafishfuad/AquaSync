@@ -34,8 +34,8 @@ export function renderMaintenance(container, commandHook) {
     div.querySelector('#btn-reset').onclick = () => {
         // Trigger the custom beautiful modal (Red Warning)
         showSystemActionModal('reset', deviceName, async () => {
-            // 1. Send command to ESP32
-            commandHook({ command: "factory_reset" });
+            // 1. Send command to ESP32 (AWAIT IT to ensure delivery before reload)
+            await commandHook({ command: "factory_reset" });
             
             // 2. Remove cloud ownership so the device can be re-paired to any account
             if (hwid && IdentityStore.currentUser) {

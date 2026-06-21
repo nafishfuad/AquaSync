@@ -176,16 +176,17 @@ export const DeviceStore = {
         }
     },
 
-    // Remove ownerUid from Firebase when a device is removed or factory-reset
+    // Fully scrub a device from Firebase when it is removed or factory-reset
     async unclaimDevice(hwid) {
         if (!hwid) return;
         try {
-            await fetch(`${FIREBASE_URL}/devices/${hwid}/ownerUid.json`, {
-                method: 'DELETE'
-            });
-            console.log("🗑️ Unclaimed device from cloud:", hwid);
+            // Delete all child nodes to completely wipe the AQUA-**** object
+            await fetch(`${FIREBASE_URL}/devices/${hwid}/state.json`, { method: 'DELETE' });
+            await fetch(`${FIREBASE_URL}/devices/${hwid}/commands.json`, { method: 'DELETE' });
+            await fetch(`${FIREBASE_URL}/devices/${hwid}/ownerUid.json`, { method: 'DELETE' });
+            console.log("🗑️ Completely wiped device from cloud:", hwid);
         } catch (e) {
-            console.error("❌ Failed to unclaim device:", hwid, e);
+            console.error("❌ Failed to wipe device from cloud:", hwid, e);
         }
     },
 
@@ -258,15 +259,25 @@ export const DeviceStore = {
                     todayTotal = newMetrics.liveActiveMins;
                 }
 
-                d[0] = Math.max(d[0] || 0, todayTotal);
+                // 🔥 THE FIX: Unshift today's data into the front of the arrays so yesterday is preserved
+                let todayAwakeMins = 0;
+                for(let i=0; i<24; i++) todayAwakeMins += awake[i] || 0;
+                
+                const lightOutageMins = newMetrics.lightLoadSheddingToday || 0;
+                const totalOutageMins = newMetrics.totalLoadSheddingToday || 0;
+
+                const dailyAwake = toArray(newMetrics.dailyAwakeData, 30, 1440);
+                const dailyLostLight = toArray(newMetrics.dailyLostLightData, 30, 0);
+
+                d.unshift(todayTotal);
+                dailyAwake.unshift(1440 - totalOutageMins); 
+                dailyLostLight.unshift(lightOutageMins);
 
                 let weekTotal = 0;
                 let weekBlackout = 0;
                 let weekLostLight = 0;
                 const weekGraphData = [];
                 let weekDivisor = 0;
-                const dailyAwake = toArray(newMetrics.dailyAwakeData, 30, 1440);
-                const dailyLostLight = toArray(newMetrics.dailyLostLightData, 30, 0);
                 
                 for (let i = 0; i < 7; i++) {
                     const val = d[i] || 0;
@@ -292,17 +303,6 @@ export const DeviceStore = {
                     monthLostLight += dailyLostLight[i] || 0;
                 }
                 if (monthDivisor === 0) monthDivisor = 1;
-
-                const lightOutageMins = newMetrics.lightLoadSheddingToday || 0;
-                const totalOutageMins = newMetrics.totalLoadSheddingToday || 0;
-                
-                // Add today's total outage to the week and month if it's not already in dailyAwake[0]
-                if (!dailyAwake[0] || dailyAwake[0] === 0) weekBlackout += totalOutageMins;
-                if (!dailyAwake[0] || dailyAwake[0] === 0) monthBlackout += totalOutageMins;
-                
-                // Add today's lost light to the week and month if it's not already in dailyLostLight[0]
-                if (!dailyAwake[0] || dailyAwake[0] === 0) weekLostLight += lightOutageMins;
-                if (!dailyAwake[0] || dailyAwake[0] === 0) monthLostLight += lightOutageMins;
 
                 this.devices[hwid].analyticsData = {
                     today: { 
