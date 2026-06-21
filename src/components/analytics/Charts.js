@@ -154,11 +154,19 @@ export function renderCharts(container, analyticsData) {
           }
           if (isSched && !isBlackout) {
               if (analyticsData && analyticsData.today && analyticsData.today.hourlyGraph) {
-                  if (activeMinsLeft[h] > 0) {
-                      isActuallyOn = true;
-                      activeMinsLeft[h]--;
-                  } else if (h === now.getHours() && m && m.isLightOn) {
-                      isActuallyOn = true;
+                  if (h === now.getHours()) {
+                      // It's the current hour! Distribute the active minutes backwards from NOW to be perfectly live.
+                      let activeMins = analyticsData.today.hourlyGraph[h] || 0;
+                      let currentMin = now.getMinutes();
+                      if (min <= currentMin && min > currentMin - activeMins) {
+                          isActuallyOn = true;
+                      }
+                  } else {
+                      // Past hours: consume from the start of the scheduled block
+                      if (activeMinsLeft[h] > 0) {
+                          isActuallyOn = true;
+                          activeMinsLeft[h]--;
+                      }
                   }
               } else {
                   isActuallyOn = true;
@@ -170,9 +178,7 @@ export function renderCharts(container, analyticsData) {
       chartData.push(y);
 
       let sliceColor = isLightMode ? "#e2e8f0" : "#1f2937";
-      if (isFuture) {
-        sliceColor = isLightMode ? "#cbd5e1" : "#374151";
-      } else if (isBlackout) {
+      if (isBlackout) {
         sliceColor = "#ef4444"; 
       } else if (y === 1 && isActuallyOn) {
         sliceColor = "#00f2fe"; 
