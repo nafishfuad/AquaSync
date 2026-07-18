@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">AquaSync</string>
-    <string name="title_activity_main">AquaSync</string>
-    <string name="package_name">com.aquasync.app</string>
-    <string name="custom_url_scheme">com.aquasync.app</string>
-</resources>

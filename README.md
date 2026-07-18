@@ -23,10 +23,10 @@ Reviewing and refining the AI output gave me deep, hands-on experience with:
 *   **Firebase Authentication:** Managing secure user login and device ownership mapping.
 
 ## 📁 Repository Structure
-*   `Index.html`, `/src/`, `/assets/` - The core Vanilla JavaScript Web Application.
-*   `/ESP32_Firmware/AquaControl/` - The C++ source code for the ESP32 microcontroller.
-*   `/Android_APK/` - The compiled Android app for the ecosystem.
-*   `/firmware/` - Compiled `.bin` files used by the ESP32 for Over-The-Air (OTA) updates.
+*   `/frontend/` - The core Vanilla JavaScript Web Application (`Index.html`, `/src/`, `/assets/`, `sw.js`).
+*   `/firmware/` - Both the C++ source code (`/firmware/AquaControl/`) for the ESP32 microcontroller and the compiled `.bin` files for Over-The-Air (OTA) updates.
+*   `/mobile/` - The Android Studio project files (`/mobile/android/`) and compiled APK (`/mobile/apk/`).
+*   `firmware.json` & `netlify.toml` - Root manifest and deployment configuration.
 
 ## ©️ Copyright & License
 Copyright © 2026 Nafish Fuad. All rights reserved.
