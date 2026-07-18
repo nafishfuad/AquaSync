@@ -167,13 +167,24 @@ export const API = {
 
     async checkLatestFirmware(model) {
         try {
-            const response = await fetch("https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware.json?t=" + Date.now());
-            if (!response.ok) return null;
+            const isLocalHost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.hostname.startsWith("192.168.") || window.location.hostname.startsWith("10.") || window.location.hostname.startsWith("172.");
+            let response = null;
+            if (isLocalHost) {
+                try {
+                    response = await fetch("/firmware.json?t=" + Date.now());
+                } catch (e) {
+                    response = null;
+                }
+            }
+            if (!response || !response.ok) {
+                response = await fetch("https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware.json?t=" + Date.now());
+            }
+            if (!response || !response.ok) return null;
             
             const data = await response.json();
             return data[model] || null; 
         } catch (err) {
-            console.error("[API] Failed to fetch OTA manifest from GitHub.", err);
+            console.error("[API] Failed to fetch OTA manifest.", err);
             return null;
         }
     }

@@ -23,27 +23,36 @@ export function setupDemoDevice() {
     dev.metrics.fanSpeed = 60;
     dev.metrics.isCO2ScheduleSeparate = true;
     
-    dev.analyticsData = {
-        today: {
-            totalActive: "08h 30m",
-            loadShedding: "00h 00m",
-            hourlyGraph: [0,0,0,0,0,0,0,0,30,60,60,60,60,60,60,60,60,30,0,0,0,0,0,0],
-            awakeData: Array(24).fill(60)
-        },
-        week: {
-            totalActive: "59h 30m",
-            avgLight: "08h 30m",
-            loadShedding: "00h 00m",
-            dailyGraph: [8.5, 8.5, 8.5, 8.5, 8.5, 8.5, 8.5]
-        },
-        month: {
-            totalActive: "255h 00m",
-            avgLight: "08h 30m",
-            loadShedding: "00h 00m",
-            dailyGraph: Array(30).fill(8.5)
-        }
-    };
+    // 🌊 Dynamic fluctuating realistic dummy data generator
+    const mockDailyData = [];
+    const mockDailyLostLight = [];
+    const mockDailyAwake = [];
     
+    for (let i = 0; i < 30; i++) {
+        // Natural up-and-down variation between 4 to 9 hours (240 to 540 mins)
+        const baseMins = 420 + Math.round(120 * Math.sin(i * 0.5)) + Math.round((Math.random() - 0.5) * 60);
+        const clampedActive = Math.max(240, Math.min(540, baseMins));
+        mockDailyData.push(clampedActive);
+        
+        // Sporadic load shedding scattered across historical days (e.g. 15m, 30m, 45m, or 60m outages)
+        const hasOutage = (i % 3 === 0) || (Math.random() < 0.3);
+        const outageMins = hasOutage ? [15, 30, 45, 60][Math.floor(Math.random() * 4)] : 0;
+        mockDailyLostLight.push(outageMins);
+        mockDailyAwake.push(1440 - outageMins);
+    }
+    
+    dev.metrics.hourlyData = [0, 0, 0, 0, 0, 0, 0, 0, 30, 60, 60, 60, 60, 60, 60, 60, 60, 30, 0, 0, 0, 0, 0, 0];
+    dev.metrics.awakeData = Array(24).fill(60);
+    dev.metrics.awakeData[14] = 30; // 30 mins outage during 2:00 PM hour
+    dev.metrics.outagesToday = "14:00-14:30,";
+    dev.metrics.dailyData = mockDailyData;
+    dev.metrics.dailyAwakeData = mockDailyAwake;
+    dev.metrics.dailyLostLightData = mockDailyLostLight;
+    dev.metrics.liveActiveMins = 510;
+    dev.metrics.lightLoadSheddingToday = 30;
+    dev.metrics.totalLoadSheddingToday = 30;
+    
+    DeviceStore.updateDeviceState(demoId, dev.metrics);
     DeviceStore.setActiveDevice(demoId);
     
     // 🔥 THE FIX: Explicitly force the browser to save to LocalStorage before reloading!

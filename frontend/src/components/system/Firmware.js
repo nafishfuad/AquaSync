@@ -11,8 +11,23 @@ export function renderFirmware(container, fwState, commandHook) {
     const activeDevice = DeviceStore.getActiveDevice();
     const isStaged = activeDevice?.metrics?.ota_staged === true;
 
-    // Determine update logic
-    const isUpdateAvailable = (fwState.current !== fwState.latest) && (fwState.latest !== "Checking..." && fwState.latest !== "Unknown");
+    // Determine update logic with semantic version comparison
+    const isNewerVersion = (latestStr, currentStr) => {
+        if (!latestStr || !currentStr || latestStr === "Checking..." || latestStr === "Unknown" || currentStr === "Checking..." || currentStr === "Unknown") return false;
+        if (latestStr === currentStr) return false;
+        const parseVer = (str) => String(str).replace(/^v/i, '').split('.').map(n => parseInt(n) || 0);
+        const l = parseVer(latestStr);
+        const c = parseVer(currentStr);
+        for (let i = 0; i < Math.max(l.length, c.length); i++) {
+            const lv = l[i] || 0;
+            const cv = c[i] || 0;
+            if (lv > cv) return true;
+            if (lv < cv) return false;
+        }
+        return false;
+    };
+
+    const isUpdateAvailable = isNewerVersion(fwState.latest, fwState.current);
 
     let statusText = isUpdateAvailable ? "New firmware found! Ready to download." : "Your device is up to date.";
     let statusColor = isUpdateAvailable ? "text-amber-400" : "text-gray-500";

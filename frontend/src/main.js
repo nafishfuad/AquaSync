@@ -223,8 +223,20 @@ const AquaSync = {
         if (!this._firmwareChecked || device.firmware.latest === "Checking..." || device.firmware.latest === "Unknown") {
             this._firmwareChecked = true;
             try {
-                const fullManifestReq = await fetch("https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware.json?t=" + Date.now());
-                if (fullManifestReq.ok) {
+                const isLocalHost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.hostname.startsWith("192.168.") || window.location.hostname.startsWith("10.") || window.location.hostname.startsWith("172.");
+                let fullManifestReq = null;
+                if (isLocalHost) {
+                    try {
+                        fullManifestReq = await fetch("/firmware.json?t=" + Date.now());
+                    } catch (e) {
+                        fullManifestReq = null;
+                    }
+                }
+                if (!fullManifestReq || !fullManifestReq.ok) {
+                    fullManifestReq = await fetch("https://raw.githubusercontent.com/nafishfuad/AquaSync/main/firmware.json?t=" + Date.now());
+                }
+
+                if (fullManifestReq && fullManifestReq.ok) {
                     const fullManifest = await fullManifestReq.json();
                     
                     device.firmware.latest = fullManifest[device.model]?.version || "Unknown";

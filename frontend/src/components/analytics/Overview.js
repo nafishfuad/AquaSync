@@ -27,7 +27,7 @@ export function renderOverview(container, device) {
 
     const styleTimeStr = (str, colorClass = "text-white") => {
         if (!str) return '<span>--</span>';
-        const hmMatch = str.match(/(\d{2})h (\d{2})m/);
+        const hmMatch = str.match(/(\d+)h (\d+)m/);
         if (hmMatch) return `<div class="whitespace-nowrap"><span class="text-xl font-bold ${colorClass} tracking-tight">${hmMatch[1]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">h</span><span class="text-xl font-bold ${colorClass} tracking-tight">${hmMatch[2]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">m</span></div>`;
         
         const mMatch = String(str).match(/^(\d+)m?$/);

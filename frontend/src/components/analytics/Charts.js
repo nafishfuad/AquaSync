@@ -21,7 +21,7 @@ export function renderCharts(container, analyticsData) {
     // 🔥 FATAL CRASH FIX: Protect against undefined/null data from old memory
     if (!str) str = "00h 00m"; 
     
-    const match = String(str).match(/(\d{2})h (\d{2})m/);
+    const match = String(str).match(/(\d+)h (\d+)m/);
     if (match)
       return `<div class="whitespace-nowrap"><span class="text-2xl font-bold ${colorClass} tracking-tight">${match[1]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">h</span><span class="text-2xl font-bold ${colorClass} tracking-tight">${match[2]}</span><span class="text-[11px] text-gray-500 font-bold mx-0.5">m</span></div>`;
     return `<div class="whitespace-nowrap text-2xl font-bold ${colorClass}">${str}</div>`;
@@ -105,8 +105,34 @@ export function renderCharts(container, analyticsData) {
     }
 
     const startMins = parseMins(m.startTime);
-    const photoMins = m.photoperiod * 60;
+    const photoMins = (m.photoperiod || 8) * 60;
     const endMins = startMins + photoMins;
+
+    // Synthesize outage block if awakeData reports lost minutes not covered by outagesToday string
+    if (analyticsData.today.awakeData) {
+        for (let h = 0; h < 24; h++) {
+            const awakeMins = analyticsData.today.awakeData[h];
+            if (awakeMins < 60 && awakeMins >= 0) {
+                const hourStart = h * 60;
+                const hourEnd = (h + 1) * 60;
+                const lost = 60 - awakeMins;
+                const alreadyCovered = outages.some(o => (o.start >= hourStart && o.start < hourEnd) || (o.end > hourStart && o.end <= hourEnd));
+                if (!alreadyCovered && lost > 0) {
+                    outages.push({ start: hourStart + (60 - lost), end: hourEnd });
+                }
+            }
+        }
+    }
+
+    // 🔥 CRITICAL FALLBACK: If outages array is still empty (from old localStorage or pending string sync) BUT load shedding minutes exist right above on the card:
+    if (outages.length === 0) {
+        const loadSheddingMins = parseMins(analyticsData.today.loadShedding) || m.lightLoadSheddingToday || m.totalLoadSheddingToday || (m.isDummy ? 30 : 0);
+        if (loadSheddingMins > 0 && photoMins > loadSheddingMins) {
+            // Place the exact red load shedding interval along the upper line (e.g., 2 hours after startMins, like 2:00 PM to 2:30 PM)
+            const outageStart = startMins + Math.min(120, Math.floor((photoMins - loadSheddingMins) / 2));
+            outages.push({ start: outageStart, end: outageStart + loadSheddingMins });
+        }
+    }
 
     const graphStartMins = startMins - 60;
     const graphEndMins = endMins + 60;
@@ -144,33 +170,30 @@ export function renderCharts(container, analyticsData) {
       let isActuallyOn = false;
       let isBlackout = false;
 
-      if (!isFuture) {
-          for (const o of outages) {
-              if (o.start <= o.end) {
-                  if (normalizedT >= o.start && normalizedT < o.end) { isBlackout = true; break; }
-              } else {
-                  if (normalizedT >= o.start || normalizedT < o.end) { isBlackout = true; break; }
-              }
+      for (const o of outages) {
+          if (o.start <= o.end) {
+              if (normalizedT >= o.start && normalizedT < o.end) { isBlackout = true; break; }
+          } else {
+              if (normalizedT >= o.start || normalizedT < o.end) { isBlackout = true; break; }
           }
-          if (isSched && !isBlackout) {
-              if (analyticsData && analyticsData.today && analyticsData.today.hourlyGraph) {
-                  if (h === now.getHours()) {
-                      // It's the current hour! Distribute the active minutes backwards from NOW to be perfectly live.
-                      let activeMins = analyticsData.today.hourlyGraph[h] || 0;
-                      let currentMin = now.getMinutes();
-                      if (min <= currentMin && min > currentMin - activeMins) {
-                          isActuallyOn = true;
-                      }
-                  } else {
-                      // Past hours: consume from the start of the scheduled block
-                      if (activeMinsLeft[h] > 0) {
-                          isActuallyOn = true;
-                          activeMinsLeft[h]--;
-                      }
+      }
+
+      if (!isFuture && isSched && !isBlackout) {
+          if (analyticsData && analyticsData.today && analyticsData.today.hourlyGraph) {
+              if (h === now.getHours()) {
+                  let activeMins = analyticsData.today.hourlyGraph[h] || 0;
+                  let currentMin = now.getMinutes();
+                  if (min <= currentMin && min > currentMin - activeMins) {
+                      isActuallyOn = true;
                   }
               } else {
-                  isActuallyOn = true;
+                  if (activeMinsLeft[h] > 0) {
+                      isActuallyOn = true;
+                      activeMinsLeft[h]--;
+                  }
               }
+          } else {
+              isActuallyOn = true;
           }
       }
 
@@ -178,10 +201,14 @@ export function renderCharts(container, analyticsData) {
       chartData.push(y);
 
       let sliceColor = isLightMode ? "#e2e8f0" : "#1f2937";
-      if (isBlackout) {
-        sliceColor = "#ef4444"; 
-      } else if (y === 1 && isActuallyOn) {
-        sliceColor = "#00f2fe"; 
+      if (y === 1) {
+          if (!isFuture) {
+              if (isBlackout) {
+                  sliceColor = "#FF4C4C"; 
+              } else if (isActuallyOn) {
+                  sliceColor = "#00f2fe"; 
+              }
+          }
       }
       segmentColors.push(sliceColor);
     }
@@ -210,17 +237,17 @@ export function renderCharts(container, analyticsData) {
           {
             label: "Timeline",
             data: chartData,
-            borderWidth: 2,
+            borderWidth: 3,
             stepped: "middle",
             fill: false,
             pointRadius: 0,
             segment: {
               borderColor: (ctx) => {
                 if (ctx.p0.parsed.y !== ctx.p1.parsed.y)
-                  return isLightMode ? "#e2e8f0" : "#1f2937"; // Vertical steps are ALWAYS Gray
+                  return isLightMode ? "#e2e8f0" : "#1f2937"; // Vertical steps rising or falling are ALWAYS Gray
                 if (ctx.p0.parsed.y === 0 && ctx.p1.parsed.y === 0)
-                  return segmentColors[ctx.p0DataIndex] === "#ef4444" ? "#ef4444" : (isLightMode ? "#e2e8f0" : "#1f2937"); // Bottom line shows Red for outage, otherwise Gray
-                return segmentColors[ctx.p0DataIndex] || "#00f2fe"; // Top line gets its precise segment color
+                  return isLightMode ? "#e2e8f0" : "#1f2937"; // Bottom baseline (outside schedule) is ALWAYS Gray
+                return segmentColors[ctx.p0DataIndex] || (isLightMode ? "#e2e8f0" : "#1f2937"); // Upper line (y = 1) displays precise aquablue, red, or gray segment color
               },
             },
           },
@@ -234,7 +261,7 @@ export function renderCharts(container, analyticsData) {
             callbacks: {
               label: function(context) {
                 const color = segmentColors[context.dataIndex];
-                if (color === "#ef4444") return " Power Outage";
+                if (color === "#FF4C4C" || color === "#ef4444") return " ⚡ Power Outage";
                 if (color === "#00f2fe") return " Active Light";
                 return " Offline/Scheduled";
               }
@@ -357,7 +384,7 @@ export function renderCharts(container, analyticsData) {
     (ctx) => ({
       type: "line",
       data: {
-        labels: Array.from({ length: 30 }, (_, i) => i + 1),
+        labels: Array.from({ length: analyticsData.month.dailyGraph.length || 30 }, (_, i) => i + 1),
         datasets: [
           {
             data: analyticsData.month.dailyGraph,

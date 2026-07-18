@@ -6,8 +6,9 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswor
 const FIREBASE_URL = "https://aqua-fish-controller-default-rtdb.asia-southeast1.firebasedatabase.app";
 
 function formatTime(minutes) {
+    if (isNaN(minutes) || minutes < 0) return "00h 00m";
     const h = Math.floor(minutes / 60).toString().padStart(2, '0');
-    const m = (minutes % 60).toString().padStart(2, '0');
+    const m = Math.floor(minutes % 60).toString().padStart(2, '0');
     return `${h}h ${m}m`;
 }
 
@@ -130,7 +131,12 @@ export const DeviceStore = {
                     fanOnTime: "12:00",
                     fanOffTime: "20:00",
                     fanSpeed: 50,
-                    colorW: 100, colorR: 100, colorG: 100, colorB: 100
+                    colorW: 100, colorR: 100, colorG: 100, colorB: 100,
+                    hourlyData: Array(24).fill(0),
+                    dailyData: Array(30).fill(0),
+                    awakeData: Array(24).fill(1),
+                    dailyAwakeData: Array(30).fill(1440),
+                    dailyLostLightData: Array(30).fill(0)
                 },
                 capabilities: { hasLight: true, hasCO2: true, hasFan: true, hasColorSpectrum: true },
                 analyticsData: {
@@ -234,14 +240,14 @@ export const DeviceStore = {
             }
 
             // Sync the device name across all clients if it was changed elsewhere
-                    if (newMetrics.deviceName && this.devices[hwid].name !== newMetrics.deviceName) {
+            if (newMetrics.deviceName && this.devices[hwid].name !== newMetrics.deviceName) {
                 this.devices[hwid].name = newMetrics.deviceName;
             }
 
             if (newMetrics.hourlyData || newMetrics.dailyData) {
-                const h = toArray(newMetrics.hourlyData, 24, 0);
-                const d = toArray(newMetrics.dailyData, 30, 0);
-                const awake = toArray(newMetrics.awakeData, 24, 1);
+                const h = [...toArray(newMetrics.hourlyData, 24, 0)];
+                const d = [...toArray(newMetrics.dailyData, 30, 0)];
+                const awake = [...toArray(newMetrics.awakeData, 24, 1)];
 
                 let todayTotal = 0;
                 for(let i=0; i<24; i++) {
@@ -259,15 +265,15 @@ export const DeviceStore = {
                     todayTotal = newMetrics.liveActiveMins;
                 }
 
-                // 🔥 THE FIX: Unshift today's data into the front of the arrays so yesterday is preserved
+                // 🔥 THE FIX: Unshift today's data into the front of the arrays cleanly
                 let todayAwakeMins = 0;
                 for(let i=0; i<24; i++) todayAwakeMins += awake[i] || 0;
                 
                 const lightOutageMins = newMetrics.lightLoadSheddingToday || 0;
                 const totalOutageMins = newMetrics.totalLoadSheddingToday || 0;
 
-                const dailyAwake = toArray(newMetrics.dailyAwakeData, 30, 1440);
-                const dailyLostLight = toArray(newMetrics.dailyLostLightData, 30, 0);
+                const dailyAwake = [...toArray(newMetrics.dailyAwakeData, 30, 1440)];
+                const dailyLostLight = [...toArray(newMetrics.dailyLostLightData, 30, 0)];
 
                 d.unshift(todayTotal);
                 dailyAwake.unshift(1440 - totalOutageMins); 
@@ -279,7 +285,7 @@ export const DeviceStore = {
                 const weekGraphData = [];
                 let weekDivisor = 0;
                 
-                for (let i = 0; i < 7; i++) {
+                for (let i = 0; i < Math.min(7, d.length); i++) {
                     const val = d[i] || 0;
                     weekTotal += val;
                     if (val > 0) weekDivisor++;
@@ -294,7 +300,7 @@ export const DeviceStore = {
                 let monthLostLight = 0;
                 const monthGraphData = [];
                 let monthDivisor = 0;
-                for (let i = 0; i < 30; i++) {
+                for (let i = 0; i < d.length; i++) {
                     const val = d[i] || 0;
                     monthTotal += val;
                     if (val > 0) monthDivisor++;
@@ -303,6 +309,8 @@ export const DeviceStore = {
                     monthLostLight += dailyLostLight[i] || 0;
                 }
                 if (monthDivisor === 0) monthDivisor = 1;
+
+                console.log('Raw 30-Day Sum (Minutes):', monthTotal);
 
                 this.devices[hwid].analyticsData = {
                     today: { 
